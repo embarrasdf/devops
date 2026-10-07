@@ -2,7 +2,7 @@
 # Built by action.yml. The build context holds the repo at repo/ and
 # gradle-plugins at gradle-plugins/, the same layout as a cloud session.
 
-ARG TOOLCHAIN
+ARG TOOLCHAIN=ghcr.io/embarrasdf/kmp-toolchain:latest
 # The previous <repo>-cache image, or the toolchain itself on the first build.
 ARG PREVIOUS=${TOOLCHAIN}
 

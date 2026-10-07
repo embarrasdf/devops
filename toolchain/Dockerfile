@@ -9,6 +9,7 @@ FROM ${BASE}
 
 RUN apt-get update \
  && apt-get install -y --no-install-recommends ca-certificates curl git unzip \
+      libatomic1 \
  && rm -rf /var/lib/apt/lists/*
 
 COPY versions.env install-toolchain.sh /opt/toolchain/
