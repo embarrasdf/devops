@@ -1,0 +1,23 @@
+{
+  $schema: 'https://docs.renovatebot.com/renovate-schema.json',
+  extends: [
+    'config:recommended',
+  ],
+  customManagers: [
+    {
+      // Lines in toolchain/versions.env preceded by a "# renovate:" comment.
+      customType: 'regex',
+      managerFilePatterns: ['/^toolchain/versions\\.env$/'],
+      matchStrings: [
+        '# renovate: datasource=(?<datasource>\\S+) depName=(?<depName>\\S+)( extractVersion=(?<extractVersion>\\S+))?\\n[A-Z_]+=(?<currentValue>\\S+)',
+      ],
+    },
+  ],
+  packageRules: [
+    {
+      // Temurin tags look like jdk-17.0.20.1+1. Stay on JDK 17.
+      matchDepNames: ['adoptium/temurin17-binaries'],
+      versioning: 'regex:^jdk-(?<major>\\d+)\\.(?<minor>\\d+)\\.(?<patch>\\d+)(\\.(?<build>\\d+))?\\+(?<revision>\\d+)$',
+    },
+  ],
+}

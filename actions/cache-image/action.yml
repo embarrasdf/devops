@@ -1,0 +1,56 @@
+name: Build cache image
+description: >
+  Builds and pushes ghcr.io/<owner>/<repo>-cache: the kmp-toolchain image plus
+  this repo's Gradle and Kotlin/Native caches. Expects the repo checked out at
+  ctx/repo and gradle-plugins at ctx/gradle-plugins, and a docker login to ghcr.io.
+
+inputs:
+  warm-tasks:
+    description: Gradle tasks to run while filling the caches, separated by spaces.
+    required: true
+  toolchain:
+    description: Toolchain image to build on.
+    default: ghcr.io/embarrasdf/kmp-toolchain:latest
+
+outputs:
+  image:
+    description: The image name, without a tag.
+    value: ${{ steps.names.outputs.image }}
+
+runs:
+  using: composite
+  steps:
+    - name: Pick image names
+      id: names
+      shell: bash
+      env:
+        OWNER: ${{ github.repository_owner }}
+        REPO: ${{ github.event.repository.name }}
+        TOOLCHAIN: ${{ inputs.toolchain }}
+      run: |
+        image="ghcr.io/${OWNER,,}/${REPO,,}-cache"
+        echo "image=$image" >> "$GITHUB_OUTPUT"
+        # Build on the previous image when there is one, so only changes download.
+        if docker manifest inspect "$image:latest" > /dev/null 2>&1; then
+          echo "previous=$image:latest" >> "$GITHUB_OUTPUT"
+        else
+          echo "previous=$TOOLCHAIN" >> "$GITHUB_OUTPUT"
+        fi
+        cp "$GITHUB_ACTION_PATH/warm.sh" ctx/warm.sh
+
+    - name: Build and push
+      uses: docker/build-push-action@v6
+      with:
+        context: ctx
+        file: ${{ github.action_path }}/Dockerfile
+        build-args: |
+          TOOLCHAIN=${{ inputs.toolchain }}
+          PREVIOUS=${{ steps.names.outputs.previous }}
+          WARM_TASKS=${{ inputs.warm-tasks }}
+        labels: |
+          org.opencontainers.image.source=${{ github.server_url }}/${{ github.repository }}
+          org.opencontainers.image.revision=${{ github.sha }}
+        push: true
+        tags: |
+          ${{ steps.names.outputs.image }}:latest
+          ${{ steps.names.outputs.image }}:sha-${{ github.sha }}
