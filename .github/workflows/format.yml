@@ -15,7 +15,7 @@
 # On a pull request from the same repo it runs embarrasdfFormat, commits the fixes to the pull
 # request branch, then runs embarrasdfFormatCheck and comments on the pull request with any issues
 # that need a manual fix. On pushes and fork pull requests it only checks. The repo needs the
-# com.embarrasdf.gradle.plugin.lint plugin from gradle-plugins.
+# com.embarrasdf.gradle.plugin.format plugin from gradle-plugins.
 
 name: Format
 
