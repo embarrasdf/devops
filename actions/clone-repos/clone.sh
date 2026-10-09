@@ -9,8 +9,8 @@
 # repo in more than one list is cloned once, with the tasks from its first line.
 #
 # Credentials, from the environment, for repos that aren't public:
-#   APP_ID and APP_PRIVATE_KEY  a GitHub App installed on each owner in the
-#                               list; a read-only token is made per owner
+#   APP_ID and APP_PRIVATE_KEY  a GitHub App installed on the owners of the
+#                               private repos; a read-only token is made per owner
 #   TOKEN                       or one token that can read every repo
 
 set -euo pipefail
@@ -48,8 +48,8 @@ app_token() {
   installation="$(curl -fsS -H "Authorization: Bearer $jwt" \
     -H "Accept: application/vnd.github+json" \
     "https://api.github.com/users/$owner/installation" | jq -r .id)" || {
-    echo "::error::Couldn't find the GitHub App's installation on $owner. Check the app ID and key, and that the app is installed on $owner (the app's page → Install App)." >&2
-    return 1
+    echo "::warning::The GitHub App isn't installed on $owner, or its ID or key is wrong; cloning $owner's repos without credentials, which works only for public ones." >&2
+    return 0
   }
   token="$(curl -fsS -X POST -H "Authorization: Bearer $jwt" \
     -H "Accept: application/vnd.github+json" \
@@ -74,7 +74,7 @@ while read -r repo tasks; do
 
   token="$TOKEN"
   if [ -n "$APP_ID" ]; then
-    if [ -z "${owner_tokens[$owner]:-}" ]; then
+    if [ -z "${owner_tokens[$owner]+set}" ]; then
       owner_tokens[$owner]="$(app_token "$owner")"
     fi
     token="${owner_tokens[$owner]}"
@@ -88,7 +88,7 @@ while read -r repo tasks; do
   if ! git clone --quiet --filter=blob:none \
       "$clone_url" "$dest/$name"; then
     if [ -z "$token" ]; then
-      echo "::error::Couldn't clone $repo without credentials. Private repos need an app ID and key, or a token." >&2
+      echo "::error::Couldn't clone $repo without credentials. A private repo needs the GitHub App installed on $owner, or a token." >&2
     else
       echo "::error::Couldn't clone $repo. Check that the app's installation on $owner (or the token) covers it." >&2
     fi

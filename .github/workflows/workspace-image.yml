@@ -15,9 +15,8 @@
 #       secrets:
 #         app-private-key: ${{ secrets.WORKSPACE_APP_PRIVATE_KEY }}
 #
-# Cloning private repos needs either a GitHub App installed on every owner in
-# the list (app-id and app-private-key), or a token that can read them all
-# (token). The image is pushed with the calling repo's own token, so it has to
+# Cloning private repos needs either a GitHub App installed on their owners
+# (app-id and app-private-key), or a token that can read them all (token). The image is pushed with the calling repo's own token, so it has to
 # go under that repo's owner. The kmp-toolchain image it builds on is public.
 
 name: Workspace image
@@ -34,7 +33,7 @@ on:
         type: string
         required: true
       app-id:
-        description: ID of a GitHub App installed on every owner in the list, if cloning with an app.
+        description: ID of a GitHub App installed on the private repos' owners, if cloning with an app.
         type: string
         default: ''
       toolchain:

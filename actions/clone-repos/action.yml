@@ -12,8 +12,9 @@ inputs:
     required: true
   app-id:
     description: >
-      ID of a GitHub App installed on every owner in the list with read access
-      to its repos. A read-only token is made for each owner.
+      ID of a GitHub App with read access to the private repos in the list,
+      installed on each of their owners. A read-only token is made per owner;
+      an owner without the app gets its public repos cloned anonymously.
     default: ''
   app-private-key:
     description: The GitHub App's private key.
