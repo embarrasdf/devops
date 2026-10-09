@@ -26,7 +26,7 @@ on:
   workflow_call:
     inputs:
       repos-file:
-        description: Path of the repo list in the calling repo.
+        description: Path of the repo list in the calling repo, or several separated by spaces.
         type: string
         required: true
       image:
@@ -61,13 +61,11 @@ jobs:
     steps:
       - name: Check out the calling repo
         uses: actions/checkout@v7
-        with:
-          path: caller
 
       - name: Clone the repos
         uses: embarrasdf/devops/actions/clone-repos@main
         with:
-          repos-file: caller/${{ inputs.repos-file }}
+          repos-file: ${{ inputs.repos-file }}
           app-id: ${{ inputs.app-id }}
           app-private-key: ${{ secrets.app-private-key }}
           token: ${{ secrets.token }}

@@ -3,9 +3,10 @@
 # lays them out, and writes the build list the cache-image action reads.
 # Used by action.yml in this folder.
 #
-#   clone.sh <list file> <destination>
+#   clone.sh <destination> <list file> [<list file> ...]
 #
-# Each line of the list is "<owner>/<repo> <gradle task> [<gradle task> ...]".
+# Each line of a list is "<owner>/<repo> <gradle task> [<gradle task> ...]". A
+# repo in more than one list is cloned once, with the tasks from its first line.
 #
 # Credentials, from the environment, for repos that aren't public:
 #   APP_ID and APP_PRIVATE_KEY  a GitHub App installed on each owner in the
@@ -14,8 +15,8 @@
 
 set -euo pipefail
 
-list="$1"
-dest="$2"
+dest="$1"
+shift
 mkdir -p "$dest"
 : > "$dest/workspace.repos"
 
@@ -69,6 +70,7 @@ while read -r repo tasks; do
   case "$repo" in ''|'#'*) continue ;; esac
   owner="${repo%%/*}"
   name="${repo#*/}"
+  [ -d "$dest/$name" ] && continue
 
   token="$TOKEN"
   if [ -n "$APP_ID" ]; then
@@ -95,4 +97,4 @@ while read -r repo tasks; do
   # Keep the token out of the image.
   git -C "$dest/$name" remote set-url origin "$url"
   echo "$name $tasks" >> "$dest/workspace.repos"
-done < "$list"
+done < <(cat "$@")

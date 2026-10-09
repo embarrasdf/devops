@@ -6,8 +6,9 @@ description: >
 inputs:
   repos-file:
     description: >
-      The list. Each line is "<owner>/<repo> <gradle task> [<gradle task> ...]";
-      blank lines and lines starting with # are skipped.
+      The list, or several separated by spaces. Each line is
+      "<owner>/<repo> <gradle task> [<gradle task> ...]"; blank lines and lines
+      starting with # are skipped. A repo in more than one list is cloned once.
     required: true
   app-id:
     description: >
@@ -35,4 +36,6 @@ runs:
         TOKEN: ${{ inputs.token }}
         REPOS_FILE: ${{ inputs.repos-file }}
         DEST: ${{ inputs.path }}
-      run: bash "$GITHUB_ACTION_PATH/clone.sh" "$REPOS_FILE" "$DEST"
+      run: |
+        read -ra lists <<< "$REPOS_FILE"
+        bash "$GITHUB_ACTION_PATH/clone.sh" "$DEST" "${lists[@]}"
