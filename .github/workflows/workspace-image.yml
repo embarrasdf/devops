@@ -18,7 +18,7 @@
 # Cloning private repos needs either a GitHub App installed on their owner
 # (app-id and app-private-key) or a token that can read them (token). The image
 # is pushed with the calling repo's own token, so it has to go under that
-# repo's owner, and the repo needs read access to the toolchain image.
+# repo's owner. The kmp-toolchain image it builds on is public.
 
 name: Workspace image
 

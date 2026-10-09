@@ -10,8 +10,7 @@
 #         warm-tasks: ":lib:assemble :lib:compileTestKotlinJvm"
 #
 # It runs as the calling repo, so the built-in GITHUB_TOKEN can read that repo
-# and push its image. The caller's repo needs read access to the kmp-toolchain
-# package (package settings > Manage Actions access).
+# and push its image. The kmp-toolchain image it builds on is public.
 
 name: Cache image
 

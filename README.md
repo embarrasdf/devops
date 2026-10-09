@@ -8,13 +8,19 @@ Three kinds of Docker image, all in GitHub Container Registry (GHCR):
 
 | Image | Contents | Used by | Rebuilt |
 | --- | --- | --- | --- |
-| `ghcr.io/embarrasdf/kmp-toolchain` | JDK, Android SDK, git-lfs | Everything below | When `toolchain/` changes on `main`, monthly, or by hand |
+| `ghcr.io/embarrasdf/kmp-toolchain` (public) | JDK, Android SDK, git-lfs | Everything below | When `toolchain/` changes on `main`, monthly, or by hand |
 | `ghcr.io/embarrasdf/<repo>-cache` | The toolchain, plus one repo's dependencies, Kotlin/Native, Kotlin npm tooling and Gradle build cache | That repo's CI | When that repo's own workflow says so |
 | `ghcr.io/embarrasdf/<name>-workspace` | The toolchain, plus the same caches for a set of repos built side by side | Cloud sessions | By the private repo that lists the repos (embarrasdf/workspace) |
 
 Cache and workspace images are built on top of the toolchain image, so a build
 that uses one gets the same JDK and SDK its caches were made with. Both kinds
 come from the same Dockerfile; a `<repo>-cache` image is a workspace of one.
+
+`kmp-toolchain` is public: it holds only open-source tools and Google's Android
+SDK, so any repo, under any owner, can build on it and cloud sessions can pull
+it without a token. GitHub has no API for package visibility, so after the first
+build, open the package's settings and choose **Change visibility → Public**.
+Cache and workspace images stay private, since they hold compiled private code.
 
 ### Changing toolchain versions
 
@@ -37,9 +43,7 @@ with [`actions/clone-repos`](actions/clone-repos) and builds with
 1. Add `.github/workflows/cache-image.yml` to the repo (copy uievent's). Its
    `on:` block decides when the image rebuilds, and `warm-tasks` lists the
    Gradle tasks whose dependencies and outputs get cached.
-2. In the `kmp-toolchain` package settings, under **Manage Actions access**,
-   give the repo read access.
-3. Run the workflow once by hand.
+2. Run the workflow once by hand.
 
 The image builds the repo on its own, without gradle-plugins beside it, the
 same way the repo's CI does, so the cached outputs match CI's builds.

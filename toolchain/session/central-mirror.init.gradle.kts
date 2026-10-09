@@ -1,33 +1,46 @@
 // Sends Maven Central traffic to Google's mirror of it. Cloud sessions share
 // outbound IPs, which Maven Central rate-limits (HTTP 429).
 //
-// Installed into ~/.gradle/init.d/ on cloud sessions by apply.sh.
-// Trade-off: the mirror can trail Maven Central by a few hours after a release.
+// Each mavenCentral() is searched through the mirror instead, and Maven Central
+// itself is kept as the last repository, so an artifact the mirror doesn't have
+// yet, such as a release from the last few hours, still resolves. Only those
+// misses reach Maven Central.
+//
+// Installed into ~/.gradle/init.d/ on cloud sessions by apply.sh, and into the
+// toolchain image's Gradle home.
 val centralMirror = "https://maven-central.storage-download.googleapis.com/maven2/"
+val mavenCentralUrl = "https://repo.maven.apache.org/maven2/"
+val mirrorName = "MavenCentralMirror"
+val fallbackName = "MavenCentralFallback"
 
 fun ArtifactRepository.urlString() = (this as? MavenArtifactRepository)?.url?.toString().orEmpty()
+fun ArtifactRepository.isMirror() = urlString() == centralMirror
 
-// Rewrites mavenCentral(), including repositories declared after this runs.
+// Points mavenCentral() at the mirror, including repositories declared after this runs.
 fun RepositoryHandler.useCentralMirror() = all {
-    if (this is MavenArtifactRepository && urlString().trimEnd('/') == "https://repo.maven.apache.org/maven2") {
+    if (this is MavenArtifactRepository && name != fallbackName &&
+        urlString().trimEnd('/') == mavenCentralUrl.trimEnd('/')
+    ) {
         setUrl(centralMirror)
     }
 }
 
-// The Gradle Plugin Portal answers a miss by redirecting to Maven Central, and a
-// 429 there stops the search before later repositories, such as a snapshot
-// repository, are tried. So the portal goes last, with the mirror ahead of it,
-// including when a build declares no plugin repositories and would otherwise
-// use the portal alone.
-fun RepositoryHandler.searchPluginPortalLast() {
-    if (isEmpty()) gradlePluginPortal()
+// Orders the search: the Gradle Plugin Portal next to last, because it answers a
+// miss by redirecting to Maven Central, and a 429 there stops the search before
+// later repositories (such as a snapshot repository) are tried; Maven Central
+// last, for whatever the mirror doesn't have yet. A build that declares no plugin
+// repositories gets the portal it would have used by default.
+fun RepositoryHandler.orderRepositories(isPluginRepositories: Boolean) {
+    if (isPluginRepositories && isEmpty()) gradlePluginPortal()
     val portals = filter { it.urlString().startsWith("https://plugins.gradle.org") }
-    if (portals.isEmpty()) return
     portals.forEach { remove(it) }
-    if (none { it.urlString() == centralMirror }) {
-        maven(centralMirror) { name = "MavenCentralMirror" }
+    if (portals.isNotEmpty() && none { it.isMirror() }) {
+        maven(centralMirror) { name = mirrorName }
     }
     portals.forEach { add(it) }
+    if (any { it.isMirror() } && none { it.name == fallbackName }) {
+        maven(mavenCentralUrl) { name = fallbackName }
+    }
 }
 
 beforeSettings {
@@ -36,11 +49,14 @@ beforeSettings {
 }
 
 settingsEvaluated {
-    pluginManagement.repositories.searchPluginPortalLast()
-    dependencyResolutionManagement.repositories.searchPluginPortalLast()
+    pluginManagement.repositories.orderRepositories(isPluginRepositories = true)
+    dependencyResolutionManagement.repositories.orderRepositories(isPluginRepositories = false)
 }
 
 allprojects {
     buildscript.repositories.useCentralMirror()
     repositories.useCentralMirror()
+    afterEvaluate {
+        repositories.orderRepositories(isPluginRepositories = false)
+    }
 }

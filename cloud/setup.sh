@@ -20,7 +20,8 @@
 set -uo pipefail
 
 WORKSPACES="${WORKSPACES:?set WORKSPACES to the workspace images to install}"
-# Used only if no workspace image can be pulled.
+# Used only if no workspace image can be pulled. It's public, so this works
+# even without a registry token.
 TOOLCHAIN="${TOOLCHAIN:-ghcr.io/embarrasdf/kmp-toolchain:latest}"
 
 log() { echo "==> $*"; }
