@@ -6,12 +6,22 @@ description: >
 inputs:
   repos-file:
     description: >
-      The list. Each line is "<owner>/<repo> <gradle task> [<gradle task> ...]";
-      blank lines and lines starting with # are skipped.
+      The list, or several separated by spaces. Each line is
+      "<owner>/<repo> <gradle task> [<gradle task> ...]"; blank lines and lines
+      starting with # are skipped. A repo in more than one list is cloned once.
     required: true
+  app-id:
+    description: >
+      ID of a GitHub App with read access to the private repos in the list,
+      installed on each of their owners. A read-only token is made per owner;
+      an owner without the app gets its public repos cloned anonymously.
+    default: ''
+  app-private-key:
+    description: The GitHub App's private key.
+    default: ''
   token:
-    description: A token that can read every repo in the list.
-    required: true
+    description: Instead of an app, a token that can read every repo in the list.
+    default: ''
   path:
     description: Folder to clone into.
     default: ctx
@@ -22,7 +32,11 @@ runs:
     - name: Clone
       shell: bash
       env:
+        APP_ID: ${{ inputs.app-id }}
+        APP_PRIVATE_KEY: ${{ inputs.app-private-key }}
         TOKEN: ${{ inputs.token }}
         REPOS_FILE: ${{ inputs.repos-file }}
         DEST: ${{ inputs.path }}
-      run: bash "$GITHUB_ACTION_PATH/clone.sh" "$REPOS_FILE" "$DEST"
+      run: |
+        read -ra lists <<< "$REPOS_FILE"
+        bash "$GITHUB_ACTION_PATH/clone.sh" "$DEST" "${lists[@]}"
