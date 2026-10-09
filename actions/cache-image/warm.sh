@@ -20,12 +20,18 @@ failed=()
 while read -r dir tasks; do
   case "$dir" in ''|'#'*) continue ;; esac
   echo "==> Warming ${dir}: ${tasks}"
+  # Kotlin compiles in Gradle's own JVM rather than a daemon that would otherwise
+  # double the memory a build needs.
   # shellcheck disable=SC2086 # tasks are separate arguments
-  if (cd "/src/$dir" && ./gradlew $tasks --no-daemon --build-cache --stacktrace < /dev/null); then
+  if (cd "/src/$dir" && ./gradlew $tasks --no-daemon --build-cache --stacktrace \
+      -Pkotlin.compiler.execution.strategy=in-process < /dev/null); then
     built+=("$dir")
   else
     failed+=("$dir")
   fi
+  # The caches are in the Gradle home; the checkout and its build outputs aren't
+  # part of the image, and keeping them can fill the disk.
+  rm -rf "/src/${dir:?}"
 done < "$1"
 
 echo "==> Built: ${built[*]:-none}"
