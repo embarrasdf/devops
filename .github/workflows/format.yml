@@ -1,0 +1,80 @@
+# Reusable workflow: fixes and checks Kotlin formatting in the calling repo.
+#
+# Call it from a repo like this (the caller decides when it runs):
+#
+#   on:
+#     pull_request:
+#     push:
+#       branches: [main]
+#
+#   jobs:
+#     format:
+#       uses: embarrasdf/devops/.github/workflows/format.yml@main
+#       permissions: { contents: write, pull-requests: write }
+#
+# On a pull request from the same repo it runs embarrasdfFormat, commits the fixes to the pull
+# request branch, then runs embarrasdfFormatCheck and comments on the pull request with any issues
+# that need a manual fix. On pushes and fork pull requests it only checks. The repo needs the
+# com.embarrasdf.gradle.plugin.lint plugin from gradle-plugins.
+
+name: Format
+
+on:
+  workflow_call:
+    inputs:
+      java-version:
+        description: JDK version to build with.
+        type: string
+        default: '17'
+      gradle-args:
+        description: Extra arguments for each Gradle call, separated by spaces.
+        type: string
+        default: ''
+
+jobs:
+  format:
+    name: Format
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    permissions:
+      contents: write
+      pull-requests: write
+
+    # Shared with the other jobs that commit to pull request branches (screenshots, baseline
+    # profiles). git-auto-commit-action pushes without rebasing, so concurrent pushes fail.
+    concurrency:
+      group: auto-commit-${{ github.ref }}
+      cancel-in-progress: false
+
+    steps:
+      - name: Check out the repo
+        uses: actions/checkout@v7
+        with:
+          # The pull request branch rather than the merge commit, so fixes can be pushed to it.
+          ref: ${{ github.head_ref || github.ref }}
+          # The release plugin derives the version from tags.
+          fetch-depth: 0
+
+      - name: Copy CI gradle.properties
+        run: |
+          if [ -f .github/ci-gradle.properties ]; then
+            mkdir -p ~/.gradle
+            cp .github/ci-gradle.properties ~/.gradle/gradle.properties
+          fi
+
+      - name: Set up JDK
+        uses: actions/setup-java@v6
+        with:
+          distribution: 'zulu'
+          java-version: ${{ inputs.java-version }}
+
+      - name: Set up Gradle
+        uses: gradle/actions/setup-gradle@v6
+        with:
+          # The format action posts its own comment listing the issues.
+          add-job-summary-as-pr-comment: 'never'
+
+      - name: Fix and check formatting
+        uses: embarrasdf/devops/actions/format@main
+        with:
+          gradle-args: ${{ inputs.gradle-args }}

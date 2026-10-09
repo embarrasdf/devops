@@ -1,0 +1,132 @@
+name: Format Kotlin
+description: >
+  On a pull request from this repo, runs embarrasdfFormat and commits the fixes to the pull
+  request branch. Then runs embarrasdfFormatCheck. If issues remain, lists them in the job summary
+  and in a comment on the pull request, and fails. Elsewhere (pushes, forks) it only checks.
+  Expects the repo checked out at the pull request branch, plus a JDK and Gradle.
+
+inputs:
+  gradle-args:
+    description: Extra arguments for each Gradle call, separated by spaces.
+    default: ''
+  commit-message:
+    description: Message for the commit that holds the fixes.
+    default: "🤖 Apply formatting"
+
+runs:
+  using: composite
+  steps:
+    - name: Decide whether to fix
+      id: mode
+      shell: bash
+      env:
+        EVENT: ${{ github.event_name }}
+        HEAD_REPO: ${{ github.event.pull_request.head.repo.full_name }}
+        REPO: ${{ github.repository }}
+      run: |
+        # Fixes can only be pushed to pull request branches in this repo, not to forks.
+        if [ "$EVENT" = pull_request ] && [ "$HEAD_REPO" = "$REPO" ]; then
+          echo "fix=true" >> "$GITHUB_OUTPUT"
+        else
+          echo "fix=false" >> "$GITHUB_OUTPUT"
+        fi
+
+    - name: Fix formatting
+      if: steps.mode.outputs.fix == 'true'
+      shell: bash
+      env:
+        GRADLE_ARGS: ${{ inputs.gradle-args }}
+      run: |
+        # Fails when an issue can't be fixed automatically; the check below reports those.
+        # --continue formats every module before failing.
+        ./gradlew embarrasdfFormat --continue $GRADLE_ARGS || true
+
+    - name: Commit fixes
+      if: steps.mode.outputs.fix == 'true'
+      uses: stefanzweifel/git-auto-commit-action@v7
+      with:
+        commit_message: ${{ inputs.commit-message }}
+        file_pattern: '*.kt *.kts'
+        # Let git match the patterns in every directory, not the shell in this one.
+        disable_globbing: true
+
+    - name: Check formatting
+      id: check
+      shell: bash
+      env:
+        GRADLE_ARGS: ${{ inputs.gradle-args }}
+      run: |
+        log="$RUNNER_TEMP/format-check.log"
+        issues="$RUNNER_TEMP/format-issues.txt"
+        echo "issues-file=$issues" >> "$GITHUB_OUTPUT"
+        set -o pipefail
+        if ./gradlew embarrasdfFormatCheck --continue $GRADLE_ARGS 2>&1 | tee "$log"; then
+          echo "passed=true" >> "$GITHUB_OUTPUT"
+          exit 0
+        fi
+        echo "passed=false" >> "$GITHUB_OUTPUT"
+        # Keep each "What went wrong" block, which names the task and lists every issue.
+        awk '/^\* What went wrong:/ { keep = 1; next } /^\* Try:/ { keep = 0; print ""; next } keep' "$log" \
+          | sed -e "s/'\.\/gradlew spotlessApply'/'.\/gradlew embarrasdfFormat'/" \
+                -e 's/Resolve these lints or suppress with `suppressLintsFor`/Fix these by hand./' > "$issues"
+        {
+          echo "### Formatting issues"
+          echo
+          echo '````text'
+          cat "$issues"
+          echo '````'
+        } >> "$GITHUB_STEP_SUMMARY"
+
+    - name: Comment on the pull request
+      if: steps.mode.outputs.fix == 'true'
+      uses: actions/github-script@v8
+      env:
+        PASSED: ${{ steps.check.outputs.passed }}
+        ISSUES_FILE: ${{ steps.check.outputs.issues-file }}
+      with:
+        script: |
+          const fs = require('fs');
+          const marker = '<!-- embarrasdf-format -->';
+          const { owner, repo } = context.repo;
+          const issue_number = context.issue.number;
+
+          const comments = await github.paginate(github.rest.issues.listComments, { owner, repo, issue_number });
+          const existing = comments.find(c => c.user.type === 'Bot' && c.body.includes(marker));
+
+          let body;
+          if (process.env.PASSED === 'true') {
+            // Nothing to say unless an earlier run reported issues.
+            if (!existing) return;
+            body = `${marker}\n### Formatting issues resolved\n\nEverything on this pull request is formatted.`;
+          } else {
+            let issues = fs.readFileSync(process.env.ISSUES_FILE, 'utf8').trim();
+            const limit = 60000;
+            if (issues.length > limit) issues = issues.slice(0, limit) + '\n… (cut off; see the job summary for the rest)';
+            const runUrl = `${context.serverUrl}/${owner}/${repo}/actions/runs/${context.runId}`;
+            body = [
+              marker,
+              '### Formatting issues need a manual fix',
+              '',
+              'The fixes that could be made automatically were committed to this branch. ' +
+                'These issues remain and need to be fixed by hand:',
+              '',
+              '````text',
+              issues,
+              '````',
+              '',
+              `Run \`./gradlew embarrasdfFormatCheck\` locally to see the same list. [Workflow run](${runUrl})`,
+            ].join('\n');
+          }
+
+          if (existing) {
+            await github.rest.issues.updateComment({ owner, repo, comment_id: existing.id, body });
+          } else {
+            await github.rest.issues.createComment({ owner, repo, issue_number, body });
+          }
+
+    - name: Fail if issues remain
+      if: steps.check.outputs.passed != 'true'
+      shell: bash
+      run: |
+        echo "::error::Formatting issues remain. Run ./gradlew embarrasdfFormat locally and fix what it lists."
+        exit 1
