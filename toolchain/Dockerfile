@@ -4,7 +4,9 @@
 # Cache images build on top of this (actions/cache-image), and cloud sessions
 # copy the toolchain out of it (cloud/setup.sh).
 
-ARG BASE=ubuntu:24.04
+# Canonical's official image, from AWS's public registry rather than Docker Hub,
+# whose anonymous pull limits are much tighter.
+ARG BASE=public.ecr.aws/ubuntu/ubuntu:24.04
 FROM ${BASE}
 
 RUN apt-get update \
