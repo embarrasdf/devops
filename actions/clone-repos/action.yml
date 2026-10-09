@@ -9,9 +9,17 @@ inputs:
       The list. Each line is "<owner>/<repo> <gradle task> [<gradle task> ...]";
       blank lines and lines starting with # are skipped.
     required: true
+  app-id:
+    description: >
+      ID of a GitHub App installed on every owner in the list with read access
+      to its repos. A read-only token is made for each owner.
+    default: ''
+  app-private-key:
+    description: The GitHub App's private key.
+    default: ''
   token:
-    description: A token that can read every repo in the list.
-    required: true
+    description: Instead of an app, a token that can read every repo in the list.
+    default: ''
   path:
     description: Folder to clone into.
     default: ctx
@@ -22,6 +30,8 @@ runs:
     - name: Clone
       shell: bash
       env:
+        APP_ID: ${{ inputs.app-id }}
+        APP_PRIVATE_KEY: ${{ inputs.app-private-key }}
         TOKEN: ${{ inputs.token }}
         REPOS_FILE: ${{ inputs.repos-file }}
         DEST: ${{ inputs.path }}

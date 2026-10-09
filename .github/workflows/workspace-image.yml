@@ -15,10 +15,10 @@
 #       secrets:
 #         app-private-key: ${{ secrets.WORKSPACE_APP_PRIVATE_KEY }}
 #
-# Cloning private repos needs either a GitHub App installed on their owner
-# (app-id and app-private-key) or a token that can read them (token). The image
-# is pushed with the calling repo's own token, so it has to go under that
-# repo's owner. The kmp-toolchain image it builds on is public.
+# Cloning private repos needs either a GitHub App installed on every owner in
+# the list (app-id and app-private-key), or a token that can read them all
+# (token). The image is pushed with the calling repo's own token, so it has to
+# go under that repo's owner. The kmp-toolchain image it builds on is public.
 
 name: Workspace image
 
@@ -34,11 +34,7 @@ on:
         type: string
         required: true
       app-id:
-        description: ID of a GitHub App installed on the repos' owner, if cloning with an app.
-        type: string
-        default: ''
-      app-owner:
-        description: Owner the app is installed on. Defaults to the calling repo's owner.
+        description: ID of a GitHub App installed on every owner in the list, if cloning with an app.
         type: string
         default: ''
       toolchain:
@@ -68,20 +64,13 @@ jobs:
         with:
           path: caller
 
-      - name: Get a token from the GitHub App
-        id: app
-        if: inputs.app-id != ''
-        uses: actions/create-github-app-token@v2
-        with:
-          app-id: ${{ inputs.app-id }}
-          private-key: ${{ secrets.app-private-key }}
-          owner: ${{ inputs.app-owner || github.repository_owner }}
-
       - name: Clone the repos
         uses: embarrasdf/devops/actions/clone-repos@main
         with:
           repos-file: caller/${{ inputs.repos-file }}
-          token: ${{ steps.app.outputs.token || secrets.token }}
+          app-id: ${{ inputs.app-id }}
+          app-private-key: ${{ secrets.app-private-key }}
+          token: ${{ secrets.token }}
 
       - name: Log in to GHCR
         uses: docker/login-action@v3
