@@ -58,9 +58,17 @@ then snapshots the result for later sessions.
 
 To set up an environment:
 
-1. Create a classic GitHub token with only the `read:packages` scope.
-2. In the environment's settings, add `GHCR_TOKEN=<token>` under environment
-   variables and paste `cloud/setup.sh` as the setup script.
+1. Create a classic GitHub token with only the `read:packages` scope, and give
+   it an expiry. ghcr.io doesn't document support for fine-grained tokens.
+2. Give the environment the token, either way:
+   - **API credential** (Pro and Max plans): the session proxy adds it to
+     requests for `ghcr.io`, so the token never enters the session. Use
+     Credential type Bearer, header `Authorization`, and the base64 of the
+     token as the value. This hasn't been tested with `docker pull` yet; if
+     pulls fail with 401, use the variable instead.
+   - **Environment variable** `GHCR_TOKEN=<token>`. Claude and anyone using the
+     environment can read it.
+3. Paste `cloud/setup.sh` as the setup script.
 
 The snapshot is rebuilt when the setup script changes or after about 7 days.
 To pick up newer images sooner, change the date line in the script.

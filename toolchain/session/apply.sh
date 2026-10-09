@@ -65,6 +65,8 @@ export ANDROID_HOME=/opt/android-sdk
 export ANDROID_SDK_ROOT=/opt/android-sdk
 export JAVA_HOME=/opt/jdk
 export PATH="/opt/jdk/bin:/opt/android-sdk/platform-tools:$PATH"
+# Kotlin/Wasm browser tests run in the Chromium that ships with the session image.
+if [ -x /opt/pw-browsers/chromium ]; then export CHROME_BIN=/opt/pw-browsers/chromium; fi
 EOF
 chmod +x /etc/profile.d/android-build.sh
 grep -q 'android-build.sh' /root/.bashrc 2>/dev/null \
