@@ -1,0 +1,100 @@
+# Reusable workflow: builds a workspace image for cloud sessions, with the caches
+# from building every repo in a list side by side in one Gradle home.
+#
+# The list lives in the calling repo, usually a private one, so repo names stay
+# private. Call it like this:
+#
+#   jobs:
+#     embarrasdf:
+#       uses: embarrasdf/devops/.github/workflows/workspace-image.yml@main
+#       permissions: { contents: read, packages: write }
+#       with:
+#         repos-file: embarrasdf.repos
+#         image: ghcr.io/embarrasdf/embarrasdf-workspace
+#         app-id: ${{ vars.WORKSPACE_APP_ID }}
+#       secrets:
+#         app-private-key: ${{ secrets.WORKSPACE_APP_PRIVATE_KEY }}
+#
+# Cloning private repos needs either a GitHub App installed on their owner
+# (app-id and app-private-key) or a token that can read them (token). The image
+# is pushed with the calling repo's own token, so it has to go under that
+# repo's owner. The kmp-toolchain image it builds on is public.
+
+name: Workspace image
+
+on:
+  workflow_call:
+    inputs:
+      repos-file:
+        description: Path of the repo list in the calling repo.
+        type: string
+        required: true
+      image:
+        description: Image name without a tag, such as ghcr.io/embarrasdf/embarrasdf-workspace.
+        type: string
+        required: true
+      app-id:
+        description: ID of a GitHub App installed on the repos' owner, if cloning with an app.
+        type: string
+        default: ''
+      app-owner:
+        description: Owner the app is installed on. Defaults to the calling repo's owner.
+        type: string
+        default: ''
+      toolchain:
+        description: Toolchain image to build on.
+        type: string
+        default: ghcr.io/embarrasdf/kmp-toolchain:latest
+    secrets:
+      app-private-key:
+        description: The GitHub App's private key, if cloning with an app.
+        required: false
+      token:
+        description: A token that can read every repo in the list, if not using an app.
+        required: false
+
+jobs:
+  build:
+    name: Build ${{ inputs.image }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 120
+    permissions:
+      contents: read
+      packages: write
+
+    steps:
+      - name: Check out the calling repo
+        uses: actions/checkout@v7
+        with:
+          path: caller
+
+      - name: Get a token from the GitHub App
+        id: app
+        if: inputs.app-id != ''
+        uses: actions/create-github-app-token@v2
+        with:
+          app-id: ${{ inputs.app-id }}
+          private-key: ${{ secrets.app-private-key }}
+          owner: ${{ inputs.app-owner || github.repository_owner }}
+
+      - name: Clone the repos
+        uses: embarrasdf/devops/actions/clone-repos@main
+        with:
+          repos-file: caller/${{ inputs.repos-file }}
+          token: ${{ steps.app.outputs.token || secrets.token }}
+
+      - name: Log in to GHCR
+        uses: docker/login-action@v3
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3
+
+      - name: Build and push
+        uses: embarrasdf/devops/actions/cache-image@main
+        with:
+          image: ${{ inputs.image }}
+          toolchain: ${{ inputs.toolchain }}
