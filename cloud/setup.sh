@@ -31,11 +31,15 @@ dockerd >/var/log/dockerd.log 2>&1 &
 for _ in $(seq 30); do docker info >/dev/null 2>&1 && break; sleep 1; done
 
 if [ -n "${GHCR_TOKEN:-}" ]; then
-  echo "$GHCR_TOKEN" | docker login ghcr.io -u token --password-stdin
+  echo "$GHCR_TOKEN" | docker login ghcr.io -u token --password-stdin ||
+    log "warning: docker login to ghcr.io failed; pulls will be anonymous"
 fi
 
-for image in $WORKSPACES; do docker pull -q "$image" & done
-wait
+# Wait on the pulls only: a bare `wait` also waits on dockerd, which never
+# exits, so the script would hang until the environment kills it.
+pids=()
+for image in $WORKSPACES; do docker pull -q "$image" & pids+=("$!"); done
+wait "${pids[@]}"
 
 pulled=""
 for image in $WORKSPACES; do
