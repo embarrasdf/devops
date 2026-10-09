@@ -1,18 +1,42 @@
 #!/usr/bin/env bash
-# Runs inside the cache image build (see Dockerfile): builds the repo to fill
-# the Gradle caches, then splits $GRADLE_USER_HOME into /out/deps and /out/build.
+# Runs inside the cache image build (see Dockerfile): builds every repo in the
+# list to fill the shared Gradle, Kotlin/Native and Kotlin npm caches, then
+# splits $GRADLE_USER_HOME into /out/deps and /out/build.
 #
-#   warm.sh <gradle task> [<gradle task> ...]
+#   warm.sh <list file>
+#
+# Each line of the list is "<folder under /src> <gradle task> [<gradle task> ...]".
+# A repo whose build fails is reported and skipped, so one broken repo doesn't
+# hold back everyone else's caches; the image fails only if every repo fails.
 
-set -euo pipefail
+set -uo pipefail
 
 # The previous image's copy may be older than this toolchain's.
 mkdir -p "$GRADLE_USER_HOME/init.d"
 cp -p /opt/toolchain/session/central-mirror.init.gradle.kts "$GRADLE_USER_HOME/init.d/"
 
-cd /src/repo
-./gradlew "$@" --no-daemon --build-cache --stacktrace
+built=()
+failed=()
+while read -r dir tasks; do
+  case "$dir" in ''|'#'*) continue ;; esac
+  echo "==> Warming ${dir}: ${tasks}"
+  # shellcheck disable=SC2086 # tasks are separate arguments
+  if (cd "/src/$dir" && ./gradlew $tasks --no-daemon --build-cache --stacktrace < /dev/null); then
+    built+=("$dir")
+  else
+    failed+=("$dir")
+  fi
+done < "$1"
 
+echo "==> Built: ${built[*]:-none}"
+if [ ${#failed[@]} -gt 0 ]; then
+  echo "==> FAILED, caches for these repos are incomplete: ${failed[*]}"
+fi
+if [ ${#built[@]} -eq 0 ]; then
+  exit 1
+fi
+
+set -e
 cd "$GRADLE_USER_HOME"
 # Per-machine state, build reports and file-hash bookkeeping that Gradle and
 # Kotlin rewrite on every build. Gradle recreates what it needs.

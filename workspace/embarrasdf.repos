@@ -1,0 +1,13 @@
+# Repos in the embarrasdf-workspace image, which cloud sessions install.
+#
+# One repo per line: <owner>/<repo>, then the Gradle tasks that fill its caches,
+# usually building the app or library and compiling its unit tests. To add or
+# remove a repo, add or delete its line and merge to main; the image rebuilds.
+#
+# Repos are checked out side by side, as in a cloud session, so each repo's
+# settings.gradle.kts includes ../gradle-plugins the way it does there.
+
+embarrasdf/gradle-plugins  check
+embarrasdf/uievent         :uievent:assemble :uievent:compileTestKotlinJvm :uievent:compileTestKotlinWasmJs
+embarrasdf/trace           :trace:assemble :trace:compileTestKotlinJvm :trace:compileTestKotlinWasmJs
+embarrasdf/palette         :app:androidApp:assembleDebug :app:desktopApp:createDistributable :app:webApp:wasmJsBrowserDistribution compileTestKotlinJvm compileTestKotlinWasmJs compileDebugUnitTestKotlin

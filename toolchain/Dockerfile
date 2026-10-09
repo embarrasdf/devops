@@ -19,14 +19,15 @@ RUN bash /opt/toolchain/install-toolchain.sh
 COPY session/ /opt/toolchain/session/
 
 # Fixed cache locations, so they're found no matter what HOME is (GitHub Actions
-# container jobs set HOME=/github/home). Cache images fill these folders.
+# container jobs set HOME=/github/home). Cache images fill these folders, plus
+# Kotlin's npm tooling under /root/.kotlin, where cloud sessions look for it.
 ENV JAVA_HOME=/opt/jdk \
     ANDROID_HOME=/opt/android-sdk \
     ANDROID_SDK_ROOT=/opt/android-sdk \
     GRADLE_USER_HOME=/opt/gradle-home \
     KONAN_DATA_DIR=/opt/konan
 ENV PATH=/opt/jdk/bin:/opt/android-sdk/platform-tools:$PATH
-RUN mkdir -p /opt/gradle-home/init.d /opt/konan \
+RUN mkdir -p /opt/gradle-home/init.d /opt/konan /root/.kotlin/kotlin-npm-tooling \
  && cp /opt/toolchain/session/central-mirror.init.gradle.kts /opt/gradle-home/init.d/
 
 LABEL org.opencontainers.image.source=https://github.com/embarrasdf/devops \

@@ -18,10 +18,11 @@
 
 set -uo pipefail
 
-REGISTRY=ghcr.io/embarrasdf
-TOOLCHAIN="$REGISTRY/kmp-toolchain:latest"
-# One cache image per repo you work on in this environment.
-CACHES="$REGISTRY/uievent-cache:latest"
+# The workspace images to install, usually one. Each holds the toolchain plus
+# the caches from building every repo in devops/workspace/<name>.repos.
+WORKSPACES="ghcr.io/embarrasdf/embarrasdf-workspace:latest"
+# Used only if no workspace image can be pulled.
+TOOLCHAIN="ghcr.io/embarrasdf/kmp-toolchain:latest"
 
 log() { echo "==> $*"; }
 
@@ -33,12 +34,11 @@ if [ -n "${GHCR_TOKEN:-}" ]; then
   echo "$GHCR_TOKEN" | docker login ghcr.io -u token --password-stdin
 fi
 
-# Pull in parallel. Images share their toolchain layers, so those download once.
-for image in $TOOLCHAIN $CACHES; do docker pull -q "$image" & done
+for image in $WORKSPACES; do docker pull -q "$image" & done
 wait
 
 pulled=""
-for image in $CACHES; do
+for image in $WORKSPACES; do
   if docker image inspect "$image" >/dev/null 2>&1; then
     pulled="$pulled $image"
   else
@@ -46,13 +46,23 @@ for image in $CACHES; do
   fi
 done
 
-cid="$(docker create "$TOOLCHAIN")" || { log "error: couldn't pull $TOOLCHAIN"; exit 1; }
+# Workspace images are built on the toolchain image, so the first one also
+# supplies the toolchain.
+toolchain="${pulled# }"
+toolchain="${toolchain%% *}"
+if [ -z "$toolchain" ]; then
+  log "warning: no workspace image; installing the toolchain without caches"
+  docker pull -q "$TOOLCHAIN" || { log "error: couldn't pull $TOOLCHAIN"; exit 1; }
+  toolchain="$TOOLCHAIN"
+fi
+
+cid="$(docker create "$toolchain")"
 rm -rf /tmp/toolchain-session
 docker cp "$cid:/opt/toolchain/session" /tmp/toolchain-session
 docker rm "$cid" >/dev/null
 
 # shellcheck disable=SC2086
-bash /tmp/toolchain-session/apply.sh "$TOOLCHAIN" $pulled
+bash /tmp/toolchain-session/apply.sh "$toolchain" $pulled
 status=$?
 
 # Free the disk: the snapshot only needs the copied files.

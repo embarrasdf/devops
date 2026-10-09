@@ -1,14 +1,14 @@
 #!/usr/bin/env bash
 # Sets up a Claude Code on the web session VM from our images.
-# cloud/setup.sh copies this folder out of the kmp-toolchain image and runs it
-# as root, after pulling the images:
+# cloud/setup.sh copies this folder out of a pulled image and runs it as root:
 #
 #   apply.sh <toolchain-image> [<cache-image> ...]
 #
 # It copies the toolchain out of the first image, merges each cache image's
-# Gradle and Kotlin/Native caches into ~/.gradle and ~/.konan, then writes the
-# session config. A cache image that's missing is skipped with a warning; the
-# session then downloads those dependencies on first build.
+# Gradle, Kotlin/Native and Kotlin npm caches into ~/.gradle, ~/.konan and
+# ~/.kotlin, then writes the session config. A cache image that's missing is
+# skipped with a warning; the session then downloads those dependencies on
+# first build.
 
 set -euo pipefail
 
@@ -30,11 +30,13 @@ copy_out "$toolchain_image" /opt/jdk /opt/
 copy_out "$toolchain_image" /opt/android-sdk /opt/
 copy_out "$toolchain_image" /usr/local/bin/git-lfs /usr/local/bin/
 
-mkdir -p ~/.gradle ~/.konan
+mkdir -p ~/.gradle ~/.konan ~/.kotlin/kotlin-npm-tooling
 copy_out "$toolchain_image" /opt/gradle-home/. ~/.gradle/
 for image in "$@"; do
   log "Caches from ${image}"
-  if ! { copy_out "$image" /opt/gradle-home/. ~/.gradle/ && copy_out "$image" /opt/konan/. ~/.konan/; }; then
+  if ! { copy_out "$image" /opt/gradle-home/. ~/.gradle/ \
+      && copy_out "$image" /opt/konan/. ~/.konan/ \
+      && copy_out "$image" /root/.kotlin/kotlin-npm-tooling/. ~/.kotlin/kotlin-npm-tooling/; }; then
     log "warning: couldn't copy caches from ${image}; skipping it"
   fi
 done

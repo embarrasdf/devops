@@ -1,13 +1,19 @@
 name: Build cache image
 description: >
-  Builds and pushes ghcr.io/<owner>/<repo>-cache: the kmp-toolchain image plus
-  this repo's Gradle and Kotlin/Native caches. Expects the repo checked out at
-  ctx/repo and gradle-plugins at ctx/gradle-plugins, and a docker login to ghcr.io.
+  Builds and pushes a cache image: the kmp-toolchain image plus the Gradle,
+  Kotlin/Native and Kotlin npm caches from building repos checked out side by
+  side in ctx/. Expects a docker login to ghcr.io.
 
 inputs:
   warm-tasks:
-    description: Gradle tasks to run while filling the caches, separated by spaces.
-    required: true
+    description: >
+      For a single-repo image: the Gradle tasks to run in the calling repo,
+      separated by spaces. The repo must be checked out at ctx/<repo name>.
+      Leave empty when ctx/workspace.repos already lists the repos to build.
+    default: ''
+  image:
+    description: Image name without a tag. Defaults to ghcr.io/<owner>/<repo>-cache.
+    default: ''
   toolchain:
     description: Toolchain image to build on.
     default: ghcr.io/embarrasdf/kmp-toolchain:latest
@@ -20,15 +26,17 @@ outputs:
 runs:
   using: composite
   steps:
-    - name: Pick image names
+    - name: Prepare the build
       id: names
       shell: bash
       env:
         OWNER: ${{ github.repository_owner }}
         REPO: ${{ github.event.repository.name }}
+        IMAGE: ${{ inputs.image }}
+        WARM_TASKS: ${{ inputs.warm-tasks }}
         TOOLCHAIN: ${{ inputs.toolchain }}
       run: |
-        image="ghcr.io/${OWNER,,}/${REPO,,}-cache"
+        image="${IMAGE:-ghcr.io/${OWNER,,}/${REPO,,}-cache}"
         echo "image=$image" >> "$GITHUB_OUTPUT"
         # Build on the previous image when there is one, so only changes download.
         if docker manifest inspect "$image:latest" > /dev/null 2>&1; then
@@ -36,6 +44,10 @@ runs:
         else
           echo "previous=$TOOLCHAIN" >> "$GITHUB_OUTPUT"
         fi
+        if [ -n "$WARM_TASKS" ]; then
+          echo "$REPO $WARM_TASKS" > ctx/workspace.repos
+        fi
+        echo "Building $image from:"; cat ctx/workspace.repos
         cp "$GITHUB_ACTION_PATH/warm.sh" ctx/warm.sh
 
     - name: Build and push
@@ -46,7 +58,6 @@ runs:
         build-args: |
           TOOLCHAIN=${{ inputs.toolchain }}
           PREVIOUS=${{ steps.names.outputs.previous }}
-          WARM_TASKS=${{ inputs.warm-tasks }}
         labels: |
           org.opencontainers.image.source=${{ github.server_url }}/${{ github.repository }}
           org.opencontainers.image.revision=${{ github.sha }}
