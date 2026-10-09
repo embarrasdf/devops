@@ -1,28 +1,27 @@
 #!/usr/bin/env bash
-# Claude Code on the web environment setup script.
-# Paste this into the environment's settings (Setup script). It runs as root
-# before the repositories are cloned, and the result is snapshotted for later
-# sessions. It holds no versions or install steps: those live in
-# embarrasdf/devops (toolchain/versions.env, toolchain/session/apply.sh) and
-# arrive inside the images.
+# Installs workspace images on a Claude Code on the web session VM. A cloud
+# environment's setup script sets WORKSPACES and runs this; see
+# cloud-setup.sh in embarrasdf/workspace. It runs as root before the
+# repositories are cloned, and the result is snapshotted for later sessions.
+#
+#   WORKSPACES="ghcr.io/embarrasdf/embarrasdf-workspace:latest" bash setup.sh
+#
+# WORKSPACES lists one or more images built by the cache-image action, usually
+# one. Each holds the toolchain plus the caches from building a set of repos.
+# Versions and install steps aren't here: they live in toolchain/ and arrive
+# inside the images.
 #
 # Registry access needs a classic GitHub token with only the read:packages
 # scope, given to the environment one of two ways:
 # - as an API credential for ghcr.io (Pro and Max plans), which the session
 #   proxy adds to requests so the token never enters the session, or
 # - as the environment variable GHCR_TOKEN.
-#
-# The snapshot is rebuilt when this script changes or after about 7 days.
-# To pick up newer images sooner, change the date below.
-# Snapshot refreshed: 2026-10-07
 
 set -uo pipefail
 
-# The workspace images to install, usually one. Each holds the toolchain plus
-# the caches from building every repo in devops/workspace/<name>.repos.
-WORKSPACES="ghcr.io/embarrasdf/embarrasdf-workspace:latest"
+WORKSPACES="${WORKSPACES:?set WORKSPACES to the workspace images to install}"
 # Used only if no workspace image can be pulled.
-TOOLCHAIN="ghcr.io/embarrasdf/kmp-toolchain:latest"
+TOOLCHAIN="${TOOLCHAIN:-ghcr.io/embarrasdf/kmp-toolchain:latest}"
 
 log() { echo "==> $*"; }
 

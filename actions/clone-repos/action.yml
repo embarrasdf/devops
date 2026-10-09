@@ -1,0 +1,28 @@
+name: Clone repos side by side
+description: >
+  Clones every repo in a workspace list into one folder, the way a cloud session
+  lays them out, and writes workspace.repos there for the cache-image action.
+
+inputs:
+  repos-file:
+    description: >
+      The list. Each line is "<owner>/<repo> <gradle task> [<gradle task> ...]";
+      blank lines and lines starting with # are skipped.
+    required: true
+  token:
+    description: A token that can read every repo in the list.
+    required: true
+  path:
+    description: Folder to clone into.
+    default: ctx
+
+runs:
+  using: composite
+  steps:
+    - name: Clone
+      shell: bash
+      env:
+        TOKEN: ${{ inputs.token }}
+        REPOS_FILE: ${{ inputs.repos-file }}
+        DEST: ${{ inputs.path }}
+      run: bash "$GITHUB_ACTION_PATH/clone.sh" "$REPOS_FILE" "$DEST"
