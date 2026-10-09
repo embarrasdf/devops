@@ -26,6 +26,18 @@ outputs:
 runs:
   using: composite
   steps:
+    # A workspace image builds several repos in one go, which needs more disk than a
+    # runner leaves free. The build brings its own JDK and Android SDK, so the
+    # runner's preinstalled ones can go. When the disk fills, the runner dies
+    # without uploading the job's log.
+    - name: Free disk space
+      shell: bash
+      run: |
+        df -h /
+        sudo rm -rf /usr/local/lib/android /usr/share/dotnet /opt/ghc /usr/local/.ghcup \
+          /opt/hostedtoolcache/CodeQL /usr/local/share/boost /usr/share/swift
+        df -h /
+
     - name: Prepare the build
       id: names
       shell: bash
