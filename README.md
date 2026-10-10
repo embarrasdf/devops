@@ -58,6 +58,15 @@ environment then snapshots the result for later sessions. A cloud environment's
 own setup script sets `WORKSPACES` and runs it, so the same installer serves any
 workspace. The header of `cloud/setup.sh` covers the registry token.
 
+Workspace images can also carry Claude Code plugin marketplaces, such as
+`embarrasdf/harness`, through the `claude-marketplaces` input of
+`workspace-image.yml`, in a layer only workspace images get. `cloud/setup.sh`
+enables all their plugins in Claude Code's user settings, so they apply in
+every session, including one with several repos, where no repo's own
+`.claude/` is read. A marketplace change reaches sessions when the workspace
+image is rebuilt. Claude Code specifics stay in `cloud/setup.sh`, out of the
+toolchain.
+
 ## Files
 
 ```
