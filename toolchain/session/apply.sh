@@ -42,11 +42,11 @@ for image in "$@"; do
 done
 
 # Trust the session proxy's CA in this JDK too, in case a JVM tool runs without
-# the session's JAVA_TOOL_OPTIONS truststore.
-if [ -f /root/.ccr/agent-proxy-ca.crt ]; then
-  /opt/jdk/bin/keytool -importcert -noprompt -alias ccr-agent-proxy \
-    -file /root/.ccr/agent-proxy-ca.crt \
-    -keystore /opt/jdk/lib/security/cacerts -storepass changeit >/dev/null 2>&1 || true
+# the session's JAVA_TOOL_OPTIONS truststore. The CA doesn't exist yet while
+# setup runs: each session adds it to the system Java truststore when it
+# starts, so point the JDK at that store instead of importing the CA here.
+if [ -f /etc/ssl/certs/java/cacerts ]; then
+  ln -sf /etc/ssl/certs/java/cacerts /opt/jdk/lib/security/cacerts
 fi
 
 # Fetch Paparazzi golden images from LFS on every clone.
@@ -61,8 +61,10 @@ org.gradle.java.installations.paths=/opt/jdk
 warningsAsErrors=false
 EOF
 
-# Environment for every session shell.
-cat > /etc/profile.d/android-build.sh <<'EOF'
+# Environment for every session shell. The zz- prefix sorts it after the
+# image's java.sh, which would otherwise set JAVA_HOME to its own JDK.
+rm -f /etc/profile.d/android-build.sh
+cat > /etc/profile.d/zz-android-build.sh <<'EOF'
 export ANDROID_HOME=/opt/android-sdk
 export ANDROID_SDK_ROOT=/opt/android-sdk
 export JAVA_HOME=/opt/jdk
@@ -70,8 +72,8 @@ export PATH="/opt/jdk/bin:/opt/android-sdk/platform-tools:$PATH"
 # Kotlin/Wasm browser tests run in the Chromium that ships with the session image.
 if [ -x /opt/pw-browsers/chromium ]; then export CHROME_BIN=/opt/pw-browsers/chromium; fi
 EOF
-chmod +x /etc/profile.d/android-build.sh
-grep -q 'android-build.sh' /root/.bashrc 2>/dev/null \
-  || echo '[ -f /etc/profile.d/android-build.sh ] && . /etc/profile.d/android-build.sh' >> /root/.bashrc
+chmod +x /etc/profile.d/zz-android-build.sh
+grep -q 'zz-android-build.sh' /root/.bashrc 2>/dev/null \
+  || echo '[ -f /etc/profile.d/zz-android-build.sh ] && . /etc/profile.d/zz-android-build.sh' >> /root/.bashrc
 
 log "Session ready"
