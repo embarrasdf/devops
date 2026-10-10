@@ -8,7 +8,7 @@ Two kinds of Docker image, both in GitHub Container Registry (GHCR):
 
 | Image | Contents | Used by | Rebuilt |
 | --- | --- | --- | --- |
-| `ghcr.io/embarrasdf/kmp-toolchain` (public) | JDK, Android SDK, git-lfs, headless Chrome for browser tests in CI | Everything below | When `toolchain/` changes on `main`, monthly, or by hand |
+| `ghcr.io/embarrasdf/kmp-toolchain` (public) | JDK, Android SDK, git-lfs | Everything below | When `toolchain/` changes on `main`, monthly, or by hand |
 | `ghcr.io/embarrasdf/<name>-workspace` | The toolchain, plus the dependencies, Kotlin/Native, Kotlin npm tooling and Gradle build cache from building a set of repos side by side | Cloud sessions | By the private repo that lists the repos (embarrasdf/workspace) |
 
 Workspace images are built on top of the toolchain image, so a session gets the
