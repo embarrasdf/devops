@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# Runs inside the cache image build (see Dockerfile): builds every repo in the
+# Runs inside the workspace image build (see Dockerfile): builds every repo in the
 # list to fill the shared Gradle, Kotlin/Native and Kotlin npm caches, then
 # splits $GRADLE_USER_HOME into /out/deps and /out/build.
 #

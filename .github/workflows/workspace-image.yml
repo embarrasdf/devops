@@ -21,7 +21,7 @@
 # go under that repo's owner. The kmp-toolchain image it builds on is public.
 #
 # claude-marketplaces lists Claude Code plugin marketplace repos to bake in,
-# cloned with the same credentials, in a layer on top of the cache image at
+# cloned with the same credentials, in a layer on top of the workspace image at
 # /opt/claude-marketplaces. Cloud sessions enable all their plugins at user
 # level (see cloud/setup.sh), so a marketplace change reaches sessions when this
 # image is rebuilt.
@@ -108,19 +108,17 @@ jobs:
         uses: docker/setup-buildx-action@v3
 
       - name: Build and push
-        id: cache
-        uses: embarrasdf/devops/actions/cache-image@main
+        id: workspace
+        uses: embarrasdf/devops/actions/workspace-image@main
         with:
           image: ${{ inputs.image }}
           toolchain: ${{ inputs.toolchain }}
 
-      # On top of the image just pushed, so CI cache images, which come from the
-      # same action, stay without them.
       - name: Add the Claude Code marketplaces
         if: inputs.claude-marketplaces != ''
         shell: bash
         env:
-          IMAGE: ${{ steps.cache.outputs.image }}
+          IMAGE: ${{ steps.workspace.outputs.image }}
         run: |
           # Only the marketplaces' files go in the image.
           rm -rf claude-marketplaces/workspace.repos claude-marketplaces/*/.git
