@@ -73,7 +73,12 @@ export PATH="/opt/jdk/bin:/opt/android-sdk/platform-tools:$PATH"
 if [ -x /opt/pw-browsers/chromium ]; then export CHROME_BIN=/opt/pw-browsers/chromium; fi
 EOF
 chmod +x /etc/profile.d/zz-android-build.sh
-grep -q 'zz-android-build.sh' /root/.bashrc 2>/dev/null \
-  || echo '[ -f /etc/profile.d/zz-android-build.sh ] && . /etc/profile.d/zz-android-build.sh' >> /root/.bashrc
+# Source it from the top of .bashrc: below the early return for non-interactive
+# shells it never runs there. Drops the line for the old android-build.sh too.
+{
+  echo '[ -f /etc/profile.d/zz-android-build.sh ] && . /etc/profile.d/zz-android-build.sh'
+  grep -vF 'android-build.sh' /root/.bashrc 2>/dev/null || true
+} > /root/.bashrc.new
+mv /root/.bashrc.new /root/.bashrc
 
 log "Session ready"
