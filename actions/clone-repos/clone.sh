@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 # Clones every repo in a workspace list side by side, the way a cloud session
-# lays them out, and writes the build list the cache-image action reads.
+# lays them out, and writes the build list the workspace-image action reads.
 # Used by action.yml in this folder.
 #
 #   clone.sh <destination> <list file> [<list file> ...]

@@ -1,7 +1,5 @@
-# A cache image: kmp-toolchain plus the Gradle, Kotlin/Native and Kotlin npm
-# caches from building one or more repos. Built by action.yml, for a single
-# repo (<repo>-cache, used by CI) or a whole workspace (<name>-workspace, used
-# by cloud sessions).
+# A workspace image: kmp-toolchain plus the Gradle, Kotlin/Native and Kotlin npm
+# caches from building a set of repos, for cloud sessions. Built by action.yml.
 #
 # The build context holds the repos side by side, the same layout as a cloud
 # session, plus workspace.repos (what to build in each) and warm.sh.

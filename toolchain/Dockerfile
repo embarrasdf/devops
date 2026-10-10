@@ -1,7 +1,7 @@
 # kmp-toolchain: everything a build needs except the project's own dependencies.
 # Versions live in versions.env; change them there, not here.
 #
-# Cache images build on top of this (actions/cache-image), and cloud sessions
+# Workspace images build on top of this (actions/workspace-image), and cloud sessions
 # copy the toolchain out of it (cloud/setup.sh).
 
 # Canonical's official image, from AWS's public registry rather than Docker Hub,

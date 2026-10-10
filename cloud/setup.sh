@@ -6,7 +6,7 @@
 #
 #   WORKSPACES="ghcr.io/embarrasdf/embarrasdf-workspace:latest" bash setup.sh
 #
-# WORKSPACES lists one or more images built by the cache-image action, usually
+# WORKSPACES lists one or more images built by the workspace-image action, usually
 # one. Each holds the toolchain plus the caches from building a set of repos.
 # Versions and install steps aren't here: they live in toolchain/ and arrive
 # inside the images.
