@@ -72,16 +72,46 @@ docker rm "$cid" >/dev/null
 bash /tmp/toolchain-session/apply.sh "$toolchain" $pulled
 status=$?
 
-# Claude Code's shell snapshot keeps only PATH from the shell profile, so pass
-# the toolchain's other variables to its commands through its user settings.
-python3 - /root/.claude/settings.json <<'EOF' || status=1
+# Claude Code plugin marketplaces that workspace images carry, such as
+# embarrasdf/harness (see workspace-image.yml's claude-marketplaces).
+rm -rf /opt/claude-marketplaces
+mkdir -p /opt/claude-marketplaces
+for image in $pulled; do
+  cid="$(docker create "$image")"
+  docker cp "$cid:/opt/claude-marketplaces/." /opt/claude-marketplaces/ 2>/dev/null || true
+  docker rm "$cid" >/dev/null
+done
+
+# Claude Code's user settings, which apply in every session whatever folder it
+# starts in. A session with several repos starts in the folder they're cloned
+# into, where no repo's own .claude/ is read.
+# - Its shell snapshot keeps only PATH from the shell profile, so pass the
+#   toolchain's other variables here.
+# - Register each marketplace and enable all its plugins. Claude Code loads
+#   plugins from a directory marketplace in place, so nothing is installed now,
+#   when the claude CLI may not be there yet.
+python3 - /root/.claude/settings.json /opt/claude-marketplaces <<'EOF' || status=1
 import json, os, sys
-path = sys.argv[1]
+path, marketplaces = sys.argv[1:]
 settings = json.load(open(path)) if os.path.exists(path) else {}
 env = settings.setdefault("env", {})
 env.update(ANDROID_HOME="/opt/android-sdk", ANDROID_SDK_ROOT="/opt/android-sdk", JAVA_HOME="/opt/jdk")
 if os.access("/opt/pw-browsers/chromium", os.X_OK):
     env["CHROME_BIN"] = "/opt/pw-browsers/chromium"
+for repo in sorted(os.listdir(marketplaces)):
+    root = os.path.join(marketplaces, repo)
+    manifest = os.path.join(root, ".claude-plugin", "marketplace.json")
+    if not os.path.isfile(manifest):
+        print(f"==> warning: {root} has no .claude-plugin/marketplace.json; skipping it")
+        continue
+    marketplace = json.load(open(manifest))
+    name = marketplace["name"]
+    settings.setdefault("extraKnownMarketplaces", {})[name] = {
+        "source": {"source": "directory", "path": root}
+    }
+    for plugin in marketplace.get("plugins", []):
+        settings.setdefault("enabledPlugins", {})[f"{plugin['name']}@{name}"] = True
+    print(f"==> Claude Code marketplace {name} from {repo}")
 os.makedirs(os.path.dirname(path), exist_ok=True)
 with open(path, "w") as f:
     json.dump(settings, f, indent=2)

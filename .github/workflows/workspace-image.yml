@@ -12,12 +12,19 @@
 #         repos-file: embarrasdf.repos
 #         image: ghcr.io/embarrasdf/embarrasdf-workspace
 #         app-id: ${{ vars.WORKSPACE_APP_ID }}
+#         claude-marketplaces: embarrasdf/harness
 #       secrets:
 #         app-private-key: ${{ secrets.WORKSPACE_APP_PRIVATE_KEY }}
 #
 # Cloning private repos needs either a GitHub App installed on their owners
 # (app-id and app-private-key), or a token that can read them all (token). The image is pushed with the calling repo's own token, so it has to
 # go under that repo's owner. The kmp-toolchain image it builds on is public.
+#
+# claude-marketplaces lists Claude Code plugin marketplace repos to bake in,
+# cloned with the same credentials, in a layer on top of the cache image at
+# /opt/claude-marketplaces. Cloud sessions enable all their plugins at user
+# level (see cloud/setup.sh), so a marketplace change reaches sessions when this
+# image is rebuilt.
 
 name: Workspace image
 
@@ -34,6 +41,10 @@ on:
         required: true
       app-id:
         description: ID of a GitHub App installed on the private repos' owners, if cloning with an app.
+        type: string
+        default: ''
+      claude-marketplaces:
+        description: Claude Code plugin marketplace repos for cloud sessions, as owner/repo separated by spaces.
         type: string
         default: ''
       toolchain:
@@ -69,6 +80,23 @@ jobs:
           app-private-key: ${{ secrets.app-private-key }}
           token: ${{ secrets.token }}
 
+      - name: List the Claude Code marketplaces
+        if: inputs.claude-marketplaces != ''
+        shell: bash
+        env:
+          MARKETPLACES: ${{ inputs.claude-marketplaces }}
+        run: printf '%s\n' $MARKETPLACES > "$RUNNER_TEMP/claude-marketplaces.repos"
+
+      - name: Clone the Claude Code marketplaces
+        if: inputs.claude-marketplaces != ''
+        uses: embarrasdf/devops/actions/clone-repos@main
+        with:
+          repos-file: ${{ runner.temp }}/claude-marketplaces.repos
+          app-id: ${{ inputs.app-id }}
+          app-private-key: ${{ secrets.app-private-key }}
+          token: ${{ secrets.token }}
+          path: claude-marketplaces
+
       - name: Log in to GHCR
         uses: docker/login-action@v3
         with:
@@ -80,7 +108,25 @@ jobs:
         uses: docker/setup-buildx-action@v3
 
       - name: Build and push
+        id: cache
         uses: embarrasdf/devops/actions/cache-image@main
         with:
           image: ${{ inputs.image }}
           toolchain: ${{ inputs.toolchain }}
+
+      # On top of the image just pushed, so CI cache images, which come from the
+      # same action, stay without them.
+      - name: Add the Claude Code marketplaces
+        if: inputs.claude-marketplaces != ''
+        shell: bash
+        env:
+          IMAGE: ${{ steps.cache.outputs.image }}
+        run: |
+          # Only the marketplaces' files go in the image.
+          rm -rf claude-marketplaces/workspace.repos claude-marketplaces/*/.git
+          docker buildx build --push \
+            --tag "$IMAGE:latest" --tag "$IMAGE:sha-$GITHUB_SHA" \
+            --file - claude-marketplaces <<EOF
+          FROM $IMAGE:sha-$GITHUB_SHA
+          COPY . /opt/claude-marketplaces/
+          EOF
