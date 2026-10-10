@@ -72,6 +72,22 @@ docker rm "$cid" >/dev/null
 bash /tmp/toolchain-session/apply.sh "$toolchain" $pulled
 status=$?
 
+# Claude Code's shell snapshot keeps only PATH from the shell profile, so pass
+# the toolchain's other variables to its commands through its user settings.
+python3 - /root/.claude/settings.json <<'EOF' || status=1
+import json, os, sys
+path = sys.argv[1]
+settings = json.load(open(path)) if os.path.exists(path) else {}
+env = settings.setdefault("env", {})
+env.update(ANDROID_HOME="/opt/android-sdk", ANDROID_SDK_ROOT="/opt/android-sdk", JAVA_HOME="/opt/jdk")
+if os.access("/opt/pw-browsers/chromium", os.X_OK):
+    env["CHROME_BIN"] = "/opt/pw-browsers/chromium"
+os.makedirs(os.path.dirname(path), exist_ok=True)
+with open(path, "w") as f:
+    json.dump(settings, f, indent=2)
+    f.write("\n")
+EOF
+
 # Free the disk: the snapshot only needs the copied files.
 docker system prune -af >/dev/null 2>&1 || true
 exit $status
