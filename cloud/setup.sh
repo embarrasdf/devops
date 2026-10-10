@@ -12,16 +12,18 @@
 # inside the images.
 #
 # Registry access needs a classic GitHub token with only the read:packages
-# scope, given to the environment one of two ways:
-# - as an API credential for ghcr.io (Pro and Max plans), which the session
-#   proxy adds to requests so the token never enters the session, or
-# - as the environment variable GHCR_TOKEN.
+# scope, exported as GHCR_TOKEN by the environment's setup script itself.
+# Neither the environment's variables nor its network secrets reach the setup
+# script: variables are given to the session only, and the session proxy that
+# adds network secrets starts after setup. The login is removed on exit, so
+# the token isn't kept in the snapshot.
 
 set -uo pipefail
 
 WORKSPACES="${WORKSPACES:?set WORKSPACES to the workspace images to install}"
-# Used only if no workspace image can be pulled. It's public, so this works
-# even without a registry token.
+GHCR_TOKEN="${GHCR_TOKEN:?export GHCR_TOKEN in the setup script; see the header of this script}"
+# Used only if no workspace image can be pulled, such as before its first
+# build.
 TOOLCHAIN="${TOOLCHAIN:-ghcr.io/embarrasdf/kmp-toolchain:latest}"
 
 log() { echo "==> $*"; }
@@ -30,10 +32,11 @@ log() { echo "==> $*"; }
 dockerd >/var/log/dockerd.log 2>&1 &
 for _ in $(seq 30); do docker info >/dev/null 2>&1 && break; sleep 1; done
 
-if [ -n "${GHCR_TOKEN:-}" ]; then
-  echo "$GHCR_TOKEN" | docker login ghcr.io -u token --password-stdin ||
-    log "warning: docker login to ghcr.io failed; pulls will be anonymous"
+if ! echo "$GHCR_TOKEN" | docker login ghcr.io -u token --password-stdin; then
+  log "error: docker login to ghcr.io failed; check GHCR_TOKEN"
+  exit 1
 fi
+trap 'docker logout ghcr.io >/dev/null 2>&1 || true' EXIT
 
 # Wait on the pulls only: a bare `wait` also waits on dockerd, which never
 # exits, so the script would hang until the environment kills it.
