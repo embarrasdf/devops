@@ -1,0 +1,53 @@
+name: Pull request comment
+description: >
+  Keeps one comment on the current pull request up to date, found by a hidden marker. With a body
+  file, it creates or updates the comment. Without one, it replaces an existing comment with
+  resolved-body, or does nothing if there's no comment yet. Needs pull-requests: write.
+
+inputs:
+  marker:
+    description: HTML comment that identifies the comment, such as <!-- embarrasdf-format -->.
+    required: true
+  body-file:
+    description: Path to the comment body (Markdown). Leave empty when there's nothing to report.
+    default: ''
+  resolved-body:
+    description: Body for an existing comment once there's nothing left to report.
+    default: Resolved.
+
+runs:
+  using: composite
+  steps:
+    - name: Update the comment
+      uses: actions/github-script@v8
+      env:
+        MARKER: ${{ inputs.marker }}
+        BODY_FILE: ${{ inputs.body-file }}
+        RESOLVED_BODY: ${{ inputs.resolved-body }}
+      with:
+        script: |
+          const fs = require('fs');
+          const marker = process.env.MARKER;
+          const { owner, repo } = context.repo;
+          const issue_number = context.issue.number;
+
+          const comments = await github.paginate(github.rest.issues.listComments, { owner, repo, issue_number });
+          const existing = comments.find(c => c.user.type === 'Bot' && c.body.includes(marker));
+
+          let body;
+          if (!process.env.BODY_FILE) {
+            // Nothing to say unless an earlier run reported something.
+            if (!existing) return;
+            body = `${marker}\n${process.env.RESOLVED_BODY}`;
+          } else {
+            let text = fs.readFileSync(process.env.BODY_FILE, 'utf8').trim();
+            const limit = 60000;
+            if (text.length > limit) text = text.slice(0, limit) + '\n… (cut off; see the job summary for the rest)';
+            body = `${marker}\n${text}`;
+          }
+
+          if (existing) {
+            await github.rest.issues.updateComment({ owner, repo, comment_id: existing.id, body });
+          } else {
+            await github.rest.issues.createComment({ owner, repo, issue_number, body });
+          }
