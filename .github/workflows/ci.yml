@@ -120,11 +120,6 @@ jobs:
     permissions:
       contents: write
       pull-requests: write
-    # Shared with the other jobs that commit to pull request branches (format, baseline profiles).
-    # git-auto-commit-action pushes without rebasing, so concurrent pushes fail.
-    concurrency:
-      group: auto-commit-${{ github.ref }}
-      cancel-in-progress: false
     steps:
       - name: Set up the build
         uses: embarrasdf/devops/actions/gradle-setup@main
@@ -160,12 +155,10 @@ jobs:
 
       - name: Commit screenshots
         if: steps.verify.outcome == 'failure'
-        uses: stefanzweifel/git-auto-commit-action@v7
+        uses: embarrasdf/devops/actions/commit@main
         with:
-          commit_message: "🤖 Update screenshots"
-          file_pattern: '*/src/test/snapshots/*.png'
-          # Let git match the pattern in every directory, not the shell in this one.
-          disable_globbing: true
+          paths: '*/src/test/snapshots/*.png'
+          message: "🤖 Update screenshots"
 
   format:
     if: inputs.format

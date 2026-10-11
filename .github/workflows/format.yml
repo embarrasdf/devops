@@ -40,12 +40,6 @@ jobs:
       contents: write
       pull-requests: write
 
-    # Shared with the other jobs that commit to pull request branches (screenshots, baseline
-    # profiles). git-auto-commit-action pushes without rebasing, so concurrent pushes fail.
-    concurrency:
-      group: auto-commit-${{ github.ref }}
-      cancel-in-progress: false
-
     steps:
       - name: Set up the build
         uses: embarrasdf/devops/actions/gradle-setup@main

@@ -89,7 +89,7 @@ jobs:
 
       - name: Commit changed files
         if: inputs.commit-pattern != ''
-        uses: stefanzweifel/git-auto-commit-action@v7
+        uses: embarrasdf/devops/actions/commit@main
         with:
-          commit_message: "Update files for the release"
-          file_pattern: ${{ inputs.commit-pattern }}
+          paths: ${{ inputs.commit-pattern }}
+          message: "Update files for the release"

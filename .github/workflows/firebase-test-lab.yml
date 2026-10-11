@@ -70,11 +70,6 @@ jobs:
     timeout-minutes: ${{ inputs.timeout-minutes }}
     permissions:
       contents: write
-    # Jobs that commit share a group with the other jobs that commit to the same branch (format,
-    # screenshots). git-auto-commit-action pushes without rebasing, so concurrent pushes fail.
-    concurrency:
-      group: ${{ inputs.commit-paths != '' && format('auto-commit-{0}', github.ref) || format('ftl-{0}-{1}', github.run_id, inputs.artifact-name) }}
-      cancel-in-progress: false
     steps:
       - name: Set up the build
         uses: embarrasdf/devops/actions/gradle-setup@main
@@ -108,8 +103,7 @@ jobs:
 
       - name: Commit the results
         if: inputs.commit-paths != ''
-        uses: stefanzweifel/git-auto-commit-action@v7
+        uses: embarrasdf/devops/actions/commit@main
         with:
-          commit_message: ${{ inputs.commit-message }}
-          file_pattern: ${{ inputs.commit-paths }}
-          disable_globbing: true
+          paths: ${{ inputs.commit-paths }}
+          message: ${{ inputs.commit-message }}
