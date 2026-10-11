@@ -33,7 +33,7 @@ on:
         description: Gradle tasks to run on macOS. '' skips the job.
         type: string
         default: embarrasdfTestApple
-      screenshots:
+      screenshot-tests:
         description: >
           Verify Paparazzi screenshots. On a pull request from this repo, screenshots that changed
           are recorded and committed to the branch.
@@ -113,9 +113,9 @@ jobs:
           path: '**/build/test-results/**/*.xml'
           if-no-files-found: ignore
 
-  screenshots:
-    name: Screenshots
-    if: inputs.screenshots
+  screenshot-tests:
+    name: Screenshot Tests
+    if: inputs.screenshot-tests
     runs-on: ubuntu-latest
     timeout-minutes: 60
     permissions:
@@ -129,37 +129,10 @@ jobs:
           ref: ${{ github.head_ref || github.ref }}
           lfs: ${{ inputs.lfs }}
 
-      - name: Verify screenshots
-        id: verify
-        continue-on-error: true
-        env:
-          GRADLE_ARGS: ${{ inputs.gradle-args }}
-        run: |
-          read -ra args <<< "verifyPaparazziDebug $GRADLE_ARGS"
-          ./gradlew "${args[@]}"
-
-      - name: Fail on a fork
-        if: >-
-          steps.verify.outcome == 'failure' &&
-          (github.event_name != 'pull_request' || github.event.pull_request.head.repo.full_name != github.repository)
-        run: |
-          echo "::error::Screenshots changed. Record them with ./gradlew recordPaparazziDebug and commit them."
-          exit 1
-
-      - name: Record screenshots
-        if: steps.verify.outcome == 'failure'
-        env:
-          GRADLE_ARGS: ${{ inputs.gradle-args }}
-        run: |
-          read -ra args <<< "recordPaparazziDebug $GRADLE_ARGS"
-          ./gradlew "${args[@]}"
-
-      - name: Commit screenshots
-        if: steps.verify.outcome == 'failure'
-        uses: embarrasdf/devops/actions/commit@main
+      - name: Run screenshot tests
+        uses: embarrasdf/devops/actions/screenshot-tests@main
         with:
-          paths: '*/src/test/snapshots/*.png'
-          message: "🤖 Update screenshots"
+          gradle-args: ${{ inputs.gradle-args }}
 
   format:
     if: inputs.format

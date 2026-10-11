@@ -9,9 +9,10 @@ each shows the call.
 
 | Workflow | Jobs |
 | --- | --- |
-| [`ci.yml`](.github/workflows/ci.yml) | Linux and iOS tests, Paparazzi screenshots, formatting |
+| [`ci.yml`](.github/workflows/ci.yml) | Linux and iOS tests, Paparazzi screenshot tests, formatting |
 | [`publish.yml`](.github/workflows/publish.yml) | Maven Central, GitHub release |
-| [`apps.yml`](.github/workflows/apps.yml) | Android, iOS, web (and GitHub Pages) and desktop builds of one app |
+| [`build-apps.yml`](.github/workflows/build-apps.yml) | Android, iOS, web and desktop builds of one app |
+| [`deploy-pages.yml`](.github/workflows/deploy-pages.yml) | Builds one app's web app and deploys it to GitHub Pages |
 | [`firebase-distribute.yml`](.github/workflows/firebase-distribute.yml) | Firebase App Distribution of one app |
 | [`firebase-test-lab.yml`](.github/workflows/firebase-test-lab.yml) | Instrumented tests, benchmarks, baseline profiles |
 | [`format.yml`](.github/workflows/format.yml) | Formatting on its own |
@@ -24,7 +25,7 @@ as `embarrasdfTest`.
 
 A repo with several apps keeps each in its own folder, such as `apps/foo`, with
 `androidApp`, `iosApp`, `webApp` and `desktopApp` modules inside, and calls
-`apps.yml` and `firebase-distribute.yml` once per app with its `app-dir`.
+`build-apps.yml` and `firebase-distribute.yml` once per app with its `app-dir`.
 
 Repos extend the shared Renovate config in
 [`renovate/default.json5`](renovate/default.json5).
@@ -96,11 +97,14 @@ actions/gradle-setup/       checkout, JDK, Gradle and CI gradle.properties for e
 actions/app-info/           names and Gradle paths for an app folder
 actions/release-notes/      tester-facing release notes
 actions/format/             fixes and checks formatting
+actions/screenshot-tests/   verifies Paparazzi screenshots and commits new ones
+actions/commit/             commits from CI jobs, rebasing onto concurrent pushes
 actions/workspace-image/    builds and pushes a workspace image
   Dockerfile, warm.sh
 actions/clone-repos/        clones a workspace list side by side
 .github/workflows/
-  ci.yml, publish.yml, apps.yml, firebase-distribute.yml, firebase-test-lab.yml, format.yml
+  ci.yml, publish.yml, build-apps.yml, deploy-pages.yml, firebase-distribute.yml,
+  firebase-test-lab.yml, format.yml
                             reusable: CI for the repos
   build-toolchain.yml       builds kmp-toolchain
   workspace-image.yml       reusable: workspace repos call this to build their image

@@ -2,7 +2,7 @@
 #
 # Call it once per app from a repo like this (the caller decides when it runs):
 #
-#   name: Apps
+#   name: Build Apps
 #   on:
 #     pull_request:
 #     push:
@@ -13,8 +13,8 @@
 #   jobs:
 #     app:
 #       name: Palette
-#       uses: embarrasdf/devops/.github/workflows/apps.yml@main
-#       permissions: { contents: read, pull-requests: write, pages: write, id-token: write }
+#       uses: embarrasdf/devops/.github/workflows/build-apps.yml@main
+#       permissions: { contents: read, pull-requests: write }
 #       with:
 #         app-dir: app
 #         android: true
@@ -22,11 +22,9 @@
 #
 # app-dir is the folder that holds the app's androidApp, iosApp, webApp and desktopApp modules,
 # such as "." or "apps/foo" (see actions/app-info). iosApp holds one Xcode project, whose scheme
-# shares its name. pages deploys the web app to GitHub Pages from main, so only one app per repo
-# can set it. GitHub checks the permissions of every job here, so the caller grants pages and
-# id-token even without pages.
+# shares its name. To publish the web app, see deploy-pages.yml.
 
-name: Apps
+name: Build Apps
 
 on:
   workflow_call:
@@ -49,10 +47,6 @@ on:
         default: false
       desktop:
         description: Build the desktop app on macOS and Windows.
-        type: boolean
-        default: false
-      pages:
-        description: Deploy the web app to GitHub Pages from main.
         type: boolean
         default: false
       lfs:
@@ -165,34 +159,11 @@ jobs:
           read -ra args <<< "${PREFIX}webApp:wasmJsBrowserDistribution $GRADLE_ARGS"
           ./gradlew "${args[@]}"
 
-      - name: Upload the site for GitHub Pages
-        if: inputs.pages
-        uses: actions/upload-pages-artifact@v5
-        with:
-          path: ${{ steps.app.outputs.dir }}/webApp/build/dist/wasmJs/productionExecutable/
-
       - name: Upload the site
-        if: '!inputs.pages'
         uses: actions/upload-artifact@v7
         with:
           name: ${{ steps.app.outputs.name }}-web
           path: ${{ steps.app.outputs.dir }}/webApp/build/dist/wasmJs/productionExecutable/
-
-  pages:
-    name: Deploy to GitHub Pages
-    if: inputs.web && inputs.pages && github.ref == 'refs/heads/main'
-    needs: web
-    runs-on: ubuntu-latest
-    permissions:
-      pages: write
-      id-token: write
-    environment:
-      name: github-pages
-      url: ${{ steps.deployment.outputs.page_url }}
-    steps:
-      - name: Deploy
-        id: deployment
-        uses: actions/deploy-pages@v5
 
   desktop:
     name: Desktop (${{ matrix.name }})
