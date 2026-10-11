@@ -1,7 +1,7 @@
 name: Clone repos side by side
 description: >
   Clones every repo in a workspace list into one folder, the way a cloud session
-  lays them out, and writes workspace.repos there for the cache-image action.
+  lays them out, and writes workspace.repos there for the workspace-image action.
 
 inputs:
   repos-file:

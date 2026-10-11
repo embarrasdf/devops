@@ -2,11 +2,11 @@
 # Sets up a Claude Code on the web session VM from our images.
 # cloud/setup.sh copies this folder out of a pulled image and runs it as root:
 #
-#   apply.sh <toolchain-image> [<cache-image> ...]
+#   apply.sh <toolchain-image> [<workspace-image> ...]
 #
-# It copies the toolchain out of the first image, merges each cache image's
+# It copies the toolchain out of the first image, merges each workspace image's
 # Gradle, Kotlin/Native and Kotlin npm caches into ~/.gradle, ~/.konan and
-# ~/.kotlin, then writes the session config. A cache image that's missing is
+# ~/.kotlin, then writes the session config. A workspace image that's missing is
 # skipped with a warning; the session then downloads those dependencies on
 # first build.
 

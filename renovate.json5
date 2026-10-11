@@ -13,13 +13,6 @@
       ],
     },
   ],
-  customDatasources: {
-    // Chrome for Testing's current stable version, for CHROME_VERSION.
-    'chrome-for-testing': {
-      defaultRegistryUrlTemplate: 'https://googlechromelabs.github.io/chrome-for-testing/last-known-good-versions.json',
-      transformTemplates: ['{"releases": [{"version": channels.Stable.version}]}'],
-    },
-  },
   packageRules: [
     {
       // Temurin tags look like jdk-17.0.20.1+1. Stay on JDK 17.

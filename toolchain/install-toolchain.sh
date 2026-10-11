@@ -1,12 +1,11 @@
 #!/usr/bin/env bash
-# Installs the JDK, Android SDK, git-lfs and headless Chrome listed in versions.env.
+# Installs the JDK, Android SDK and git-lfs listed in versions.env.
 # Runs while building the kmp-toolchain image (see Dockerfile).
 #
 # Layout it produces, which cloud/setup.sh and session/apply.sh rely on:
 #   /opt/jdk                  JDK (JAVA_HOME)
 #   /opt/android-sdk          Android SDK (ANDROID_HOME)
 #   /usr/local/bin/git-lfs
-#   /opt/chrome               chrome-headless-shell (CHROME_BIN), for CI only
 #
 # The Android SDK comes from the archive zips directly rather than through
 # sdkmanager: sdkmanager is a JVM tool that doesn't pick up the cloud
@@ -58,15 +57,5 @@ curl -fsSL -o "$tmp/git-lfs.tar.gz" \
 tar -xzf "$tmp/git-lfs.tar.gz" -C "$tmp"
 install -m0755 "$(find "$tmp" -type f -name git-lfs | head -1)" /usr/local/bin/git-lfs
 rm -rf "$tmp"
-
-log "chrome-headless-shell ${CHROME_VERSION}"
-tmp="$(mktemp -d)"
-curl -fsSL -o "$tmp/chrome.zip" \
-  "https://storage.googleapis.com/chrome-for-testing-public/${CHROME_VERSION}/linux64/chrome-headless-shell-linux64.zip"
-unzip -q "$tmp/chrome.zip" -d "$tmp"
-rm -rf /opt/chrome
-mv "$tmp/chrome-headless-shell-linux64" /opt/chrome
-rm -rf "$tmp"
-/opt/chrome/chrome-headless-shell --version
 
 log "Toolchain installed"
