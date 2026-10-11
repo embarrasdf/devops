@@ -1,4 +1,4 @@
-# Reusable workflow: tests and formatting for an embarrasdf Gradle repo.
+# Reusable workflow: tests, formatting and static analysis for an embarrasdf Gradle repo.
 #
 # Call it from a repo like this (the caller decides when it runs):
 #
@@ -14,11 +14,16 @@
 #     ci:
 #       name: CI
 #       uses: embarrasdf/devops/.github/workflows/ci.yml@main
-#       permissions: { contents: write, pull-requests: write }
+#       permissions: { contents: write, pull-requests: write, security-events: write }
 #
 # The default tasks come from gradle-plugins: embarrasdfTest runs everything a Linux runner can
 # (JVM, Android unit and browser tests), and embarrasdfTestApple runs the iOS simulator tests on
 # macOS. Set apple-test-tasks to '' for a repo with no iOS tests worth the macOS minutes.
+#
+# Static analysis runs embarrasdfStaticAnalysis and fails on any finding. Findings go to the job
+# summary, to code scanning on public repos (SARIF, which needs security-events: write), and to a
+# comment on same-repo pull requests. To skip type resolution, set
+# embarrasdf.staticAnalysis.typeResolution=false in the repo's gradle.properties.
 
 name: CI
 
@@ -41,6 +46,10 @@ on:
         default: false
       format:
         description: Run the format workflow.
+        type: boolean
+        default: true
+      static-analysis:
+        description: Run static analysis.
         type: boolean
         default: true
       lfs:
@@ -142,3 +151,25 @@ jobs:
       pull-requests: write
     with:
       gradle-args: ${{ inputs.gradle-args }}
+
+  static-analysis:
+    name: Static Analysis
+    if: inputs.static-analysis
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    permissions:
+      contents: read
+      pull-requests: write
+      security-events: write
+    steps:
+      - name: Set up the build
+        uses: embarrasdf/devops/actions/gradle-setup@main
+        with:
+          lfs: ${{ inputs.lfs }}
+          # The static analysis action posts its own comment listing the findings.
+          add-job-summary-as-pr-comment: 'never'
+
+      - name: Run static analysis
+        uses: embarrasdf/devops/actions/static-analysis@main
+        with:
+          gradle-args: ${{ inputs.gradle-args }}
