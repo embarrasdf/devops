@@ -12,6 +12,7 @@
 #     cancel-in-progress: true
 #   jobs:
 #     app:
+#       name: Palette
 #       uses: embarrasdf/devops/.github/workflows/apps.yml@main
 #       permissions: { contents: read, pull-requests: write, pages: write, id-token: write }
 #       with:

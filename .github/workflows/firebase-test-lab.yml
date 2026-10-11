@@ -5,10 +5,10 @@
 #
 #   jobs:
 #     baseline-profiles:
+#       name: Firebase Test Lab
 #       uses: embarrasdf/devops/.github/workflows/firebase-test-lab.yml@main
 #       permissions: { contents: write }
 #       with:
-#         name: Generate Baseline Profiles
 #         tasks: generateBaselineProfile
 #         artifact-name: baseline-profiles
 #         paths: androidApp/src/release/generated/baselineProfiles/*.txt
@@ -29,7 +29,7 @@ on:
       name:
         description: Job name.
         type: string
-        default: Firebase Test Lab
+        default: Run
       tasks:
         description: Gradle tasks to run.
         type: string
