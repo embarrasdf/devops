@@ -22,7 +22,8 @@
 # app-dir is the folder that holds the app's androidApp, iosApp, webApp and desktopApp modules,
 # such as "." or "apps/foo" (see actions/app-info). iosApp holds one Xcode project, whose scheme
 # shares its name. pages deploys the web app to GitHub Pages from main, so only one app per repo
-# can set it.
+# can set it. GitHub checks the permissions of every job here, so the caller grants pages and
+# id-token even without pages.
 
 name: Apps
 
