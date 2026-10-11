@@ -43,12 +43,10 @@ runs:
 
     - name: Commit fixes
       if: steps.mode.outputs.fix == 'true'
-      uses: stefanzweifel/git-auto-commit-action@v7
+      uses: embarrasdf/devops/actions/commit@main
       with:
-        commit_message: ${{ inputs.commit-message }}
-        file_pattern: '*.kt *.kts'
-        # Let git match the patterns in every directory, not the shell in this one.
-        disable_globbing: true
+        paths: '*.kt *.kts'
+        message: ${{ inputs.commit-message }}
 
     - name: Check formatting
       id: check

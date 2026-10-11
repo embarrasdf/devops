@@ -1,0 +1,58 @@
+name: Screenshot tests
+description: >
+  Verifies Paparazzi screenshots. On a pull request from this repo, screenshots
+  that changed are recorded and committed to the pull request branch. Elsewhere
+  (pushes, forks) a change fails. Expects the repo checked out at the pull
+  request branch, plus a JDK and Gradle.
+
+inputs:
+  gradle-args:
+    description: Extra arguments for each Gradle call, separated by spaces.
+    default: ''
+  paths:
+    description: Git pathspecs of the screenshots, separated by spaces.
+    default: '*/src/test/snapshots/*.png'
+  commit-message:
+    description: Message for the commit that holds the new screenshots.
+    default: "🤖 Update screenshots"
+
+runs:
+  using: composite
+  steps:
+    - name: Verify screenshots
+      id: verify
+      shell: bash
+      env:
+        GRADLE_ARGS: ${{ inputs.gradle-args }}
+        EVENT: ${{ github.event_name }}
+        HEAD_REPO: ${{ github.event.pull_request.head.repo.full_name }}
+        REPO: ${{ github.repository }}
+      run: |
+        read -ra args <<< "verifyPaparazziDebug $GRADLE_ARGS"
+        if ./gradlew "${args[@]}"; then
+          echo "record=false" >> "$GITHUB_OUTPUT"
+          exit 0
+        fi
+        # New screenshots can only be pushed to pull request branches in this repo, not to forks.
+        if [ "$EVENT" = pull_request ] && [ "$HEAD_REPO" = "$REPO" ]; then
+          echo "record=true" >> "$GITHUB_OUTPUT"
+        else
+          echo "::error::Screenshots changed. Record them with ./gradlew recordPaparazziDebug and commit them."
+          exit 1
+        fi
+
+    - name: Record screenshots
+      if: steps.verify.outputs.record == 'true'
+      shell: bash
+      env:
+        GRADLE_ARGS: ${{ inputs.gradle-args }}
+      run: |
+        read -ra args <<< "recordPaparazziDebug $GRADLE_ARGS"
+        ./gradlew "${args[@]}"
+
+    - name: Commit screenshots
+      if: steps.verify.outputs.record == 'true'
+      uses: embarrasdf/devops/actions/commit@main
+      with:
+        paths: ${{ inputs.paths }}
+        message: ${{ inputs.commit-message }}

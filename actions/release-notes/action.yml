@@ -1,0 +1,37 @@
+name: Write release notes
+description: >
+  Writes tester-facing release notes: the branch, the commit and the commits it
+  adds. Expects the repo checked out with full history.
+
+inputs:
+  path:
+    description: File to write.
+    required: true
+
+runs:
+  using: composite
+  steps:
+    - name: Write the release notes
+      shell: bash
+      env:
+        NOTES: ${{ inputs.path }}
+        EVENT: ${{ github.event_name }}
+        BRANCH: ${{ github.head_ref || github.ref_name }}
+        BASE_REF: ${{ github.base_ref }}
+        BEFORE: ${{ github.event.before }}
+        SHA: ${{ github.event.pull_request.head.sha || github.sha }}
+      run: |
+        if [ "$EVENT" = pull_request ]; then
+          range="origin/$BASE_REF..$SHA"
+        elif [ -n "$BEFORE" ] && git cat-file -e "$BEFORE^{commit}" 2>/dev/null; then
+          range="$BEFORE..$SHA"
+        else
+          range="-1 $SHA"
+        fi
+        {
+          printf 'Branch: %s\n' "$BRANCH"
+          printf 'Commit: %s\n' "${SHA:0:8}"
+          printf 'Commits:\n'
+          # shellcheck disable=SC2086 # range is one or two arguments
+          git log --pretty='* %h %s' $range
+        } > "$NOTES"

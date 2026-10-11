@@ -23,9 +23,9 @@ on:
   workflow_call:
     inputs:
       java-version:
-        description: JDK version to build with.
+        description: JDK major version. Defaults to the one in toolchain/versions.env.
         type: string
-        default: '17'
+        default: ''
       gradle-args:
         description: Extra arguments for each Gradle call, separated by spaces.
         type: string
@@ -40,37 +40,13 @@ jobs:
       contents: write
       pull-requests: write
 
-    # Shared with the other jobs that commit to pull request branches (screenshots, baseline
-    # profiles). git-auto-commit-action pushes without rebasing, so concurrent pushes fail.
-    concurrency:
-      group: auto-commit-${{ github.ref }}
-      cancel-in-progress: false
-
     steps:
-      - name: Check out the repo
-        uses: actions/checkout@v7
+      - name: Set up the build
+        uses: embarrasdf/devops/actions/gradle-setup@main
         with:
           # The pull request branch rather than the merge commit, so fixes can be pushed to it.
           ref: ${{ github.head_ref || github.ref }}
-          # The release plugin derives the version from tags.
-          fetch-depth: 0
-
-      - name: Copy CI gradle.properties
-        run: |
-          if [ -f .github/ci-gradle.properties ]; then
-            mkdir -p ~/.gradle
-            cp .github/ci-gradle.properties ~/.gradle/gradle.properties
-          fi
-
-      - name: Set up JDK
-        uses: actions/setup-java@v6
-        with:
-          distribution: 'zulu'
           java-version: ${{ inputs.java-version }}
-
-      - name: Set up Gradle
-        uses: gradle/actions/setup-gradle@v6
-        with:
           # The format action posts its own comment listing the issues.
           add-job-summary-as-pr-comment: 'never'
 

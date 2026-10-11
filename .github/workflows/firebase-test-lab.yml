@@ -1,0 +1,109 @@
+# Reusable workflow: runs Gradle tasks that use Firebase Test Lab devices, such as instrumented
+# tests, benchmarks and baseline profile generation, and keeps or commits what they produce.
+#
+# Call it from a repo like this (the caller decides when it runs):
+#
+#   jobs:
+#     baseline-profiles:
+#       name: Firebase Test Lab
+#       uses: embarrasdf/devops/.github/workflows/firebase-test-lab.yml@main
+#       permissions: { contents: write }
+#       with:
+#         tasks: generateBaselineProfile
+#         artifact-name: baseline-profiles
+#         paths: androidApp/src/release/generated/baselineProfiles/*.txt
+#         commit-paths: androidApp/src/release/generated/baselineProfiles/*.txt
+#         commit-message: "🤖 Update baseline profiles"
+#       secrets:
+#         FIREBASE_SERVICE_ACCOUNT_KEY: ${{ secrets.FIREBASE_SERVICE_ACCOUNT_KEY }}
+#
+# The tasks find the service account through FIREBASE_TEST_LAB_SERVICE_ACCOUNT. Files in
+# commit-paths are committed to the branch that was built. Pull requests from forks are skipped,
+# since they get no secrets.
+
+name: Firebase Test Lab
+
+on:
+  workflow_call:
+    inputs:
+      name:
+        description: Job name.
+        type: string
+        default: Run
+      tasks:
+        description: Gradle tasks to run.
+        type: string
+        required: true
+      artifact-name:
+        description: Name of the artifact that holds the files in paths.
+        type: string
+        default: results
+      paths:
+        description: Files to upload, one pattern per line.
+        type: string
+        required: true
+      commit-paths:
+        description: Files to commit, separated by spaces or lines. '' commits nothing.
+        type: string
+        default: ''
+      commit-message:
+        description: Message for the commit.
+        type: string
+        default: "🤖 Update results"
+      lfs:
+        description: Download Git LFS files.
+        type: boolean
+        default: false
+      timeout-minutes:
+        description: Job timeout.
+        type: number
+        default: 90
+    secrets:
+      FIREBASE_SERVICE_ACCOUNT_KEY:
+        required: true
+
+jobs:
+  run:
+    name: ${{ inputs.name }}
+    if: github.event_name != 'pull_request' || github.event.pull_request.head.repo.full_name == github.repository
+    runs-on: ubuntu-latest
+    timeout-minutes: ${{ inputs.timeout-minutes }}
+    permissions:
+      contents: write
+    steps:
+      - name: Set up the build
+        uses: embarrasdf/devops/actions/gradle-setup@main
+        with:
+          # The branch rather than a pull request's merge commit, so results can be pushed to it.
+          ref: ${{ inputs.commit-paths != '' && (github.head_ref || github.ref) || '' }}
+          lfs: ${{ inputs.lfs }}
+          add-job-summary-as-pr-comment: 'never'
+
+      - name: Write the service account
+        env:
+          SERVICE_ACCOUNT_KEY: ${{ secrets.FIREBASE_SERVICE_ACCOUNT_KEY }}
+        run: printf '%s' "$SERVICE_ACCOUNT_KEY" > "$RUNNER_TEMP/ftl-service-account.json"
+
+      - name: Run
+        env:
+          TASKS: ${{ inputs.tasks }}
+          FIREBASE_TEST_LAB_SERVICE_ACCOUNT: ${{ runner.temp }}/ftl-service-account.json
+        # The Firebase Test Lab plugin doesn't support the configuration cache.
+        run: |
+          read -ra args <<< "$TASKS --no-configuration-cache"
+          ./gradlew "${args[@]}"
+
+      - name: Upload the results
+        if: always()
+        uses: actions/upload-artifact@v7
+        with:
+          name: ${{ inputs.artifact-name }}
+          path: ${{ inputs.paths }}
+          if-no-files-found: ignore
+
+      - name: Commit the results
+        if: inputs.commit-paths != ''
+        uses: embarrasdf/devops/actions/commit@main
+        with:
+          paths: ${{ inputs.commit-paths }}
+          message: ${{ inputs.commit-message }}

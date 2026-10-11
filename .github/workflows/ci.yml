@@ -1,0 +1,144 @@
+# Reusable workflow: tests and formatting for an embarrasdf Gradle repo.
+#
+# Call it from a repo like this (the caller decides when it runs):
+#
+#   name: CI
+#   on:
+#     pull_request:
+#     push:
+#       branches: [main]
+#   concurrency:
+#     group: ${{ github.workflow }}-${{ github.ref }}
+#     cancel-in-progress: true
+#   jobs:
+#     ci:
+#       name: CI
+#       uses: embarrasdf/devops/.github/workflows/ci.yml@main
+#       permissions: { contents: write, pull-requests: write }
+#
+# The default tasks come from gradle-plugins: embarrasdfTest runs everything a Linux runner can
+# (JVM, Android unit and browser tests), and embarrasdfTestApple runs the iOS simulator tests on
+# macOS. Set apple-test-tasks to '' for a repo with no iOS tests worth the macOS minutes.
+
+name: CI
+
+on:
+  workflow_call:
+    inputs:
+      test-tasks:
+        description: Gradle tasks to run on Linux. '' skips the job.
+        type: string
+        default: embarrasdfTest
+      apple-test-tasks:
+        description: Gradle tasks to run on macOS. '' skips the job.
+        type: string
+        default: embarrasdfTestApple
+      screenshot-tests:
+        description: >
+          Verify Paparazzi screenshots. On a pull request from this repo, screenshots that changed
+          are recorded and committed to the branch.
+        type: boolean
+        default: false
+      format:
+        description: Run the format workflow.
+        type: boolean
+        default: true
+      lfs:
+        description: Download Git LFS files.
+        type: boolean
+        default: false
+      gradle-args:
+        description: Extra arguments for each Gradle call, separated by spaces.
+        type: string
+        default: ''
+
+jobs:
+  test:
+    name: Test
+    if: inputs.test-tasks != ''
+    runs-on: ubuntu-latest
+    timeout-minutes: 60
+    permissions:
+      contents: read
+      pull-requests: write
+    steps:
+      - name: Set up the build
+        uses: embarrasdf/devops/actions/gradle-setup@main
+        with:
+          lfs: ${{ inputs.lfs }}
+
+      - name: Run tests
+        env:
+          TASKS: ${{ inputs.test-tasks }}
+          GRADLE_ARGS: ${{ inputs.gradle-args }}
+        run: |
+          read -ra args <<< "$TASKS $GRADLE_ARGS"
+          ./gradlew "${args[@]}"
+
+      - name: Upload test results
+        if: always()
+        uses: actions/upload-artifact@v7
+        with:
+          name: test-results-linux
+          path: '**/build/test-results/**/*.xml'
+          if-no-files-found: ignore
+
+  test-apple:
+    name: Test (Apple)
+    if: inputs.apple-test-tasks != ''
+    runs-on: macos-26
+    timeout-minutes: 60
+    permissions:
+      contents: read
+      pull-requests: write
+    steps:
+      - name: Set up the build
+        uses: embarrasdf/devops/actions/gradle-setup@main
+        with:
+          lfs: ${{ inputs.lfs }}
+
+      - name: Run tests
+        env:
+          TASKS: ${{ inputs.apple-test-tasks }}
+          GRADLE_ARGS: ${{ inputs.gradle-args }}
+        run: |
+          read -ra args <<< "$TASKS $GRADLE_ARGS"
+          ./gradlew "${args[@]}"
+
+      - name: Upload test results
+        if: always()
+        uses: actions/upload-artifact@v7
+        with:
+          name: test-results-apple
+          path: '**/build/test-results/**/*.xml'
+          if-no-files-found: ignore
+
+  screenshot-tests:
+    name: Screenshot Tests
+    if: inputs.screenshot-tests
+    runs-on: ubuntu-latest
+    timeout-minutes: 60
+    permissions:
+      contents: write
+      pull-requests: write
+    steps:
+      - name: Set up the build
+        uses: embarrasdf/devops/actions/gradle-setup@main
+        with:
+          # The pull request branch rather than the merge commit, so screenshots can be pushed to it.
+          ref: ${{ github.head_ref || github.ref }}
+          lfs: ${{ inputs.lfs }}
+
+      - name: Run screenshot tests
+        uses: embarrasdf/devops/actions/screenshot-tests@main
+        with:
+          gradle-args: ${{ inputs.gradle-args }}
+
+  format:
+    if: inputs.format
+    uses: embarrasdf/devops/.github/workflows/format.yml@main
+    permissions:
+      contents: write
+      pull-requests: write
+    with:
+      gradle-args: ${{ inputs.gradle-args }}

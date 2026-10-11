@@ -1,0 +1,208 @@
+# Reusable workflow: builds an app's Android, iOS, web and desktop apps.
+#
+# Call it once per app from a repo like this (the caller decides when it runs):
+#
+#   name: Build Apps
+#   on:
+#     pull_request:
+#     push:
+#       branches: [main]
+#   concurrency:
+#     group: ${{ github.workflow }}-${{ github.ref }}
+#     cancel-in-progress: true
+#   jobs:
+#     app:
+#       name: Palette
+#       uses: embarrasdf/devops/.github/workflows/build-apps.yml@main
+#       permissions: { contents: read, pull-requests: write }
+#       with:
+#         app-dir: app
+#         android: true
+#         ios: true
+#
+# app-dir is the folder that holds the app's androidApp, iosApp, webApp and desktopApp modules,
+# such as "." or "apps/foo" (see actions/app-info). iosApp holds one Xcode project, whose scheme
+# shares its name. To publish the web app, see deploy-pages.yml.
+
+name: Build Apps
+
+on:
+  workflow_call:
+    inputs:
+      app-dir:
+        description: The app folder.
+        type: string
+        default: '.'
+      android:
+        description: Build the Android app.
+        type: boolean
+        default: false
+      ios:
+        description: Build the iOS app for the simulator.
+        type: boolean
+        default: false
+      web:
+        description: Build the web app.
+        type: boolean
+        default: false
+      desktop:
+        description: Build the desktop app on macOS and Windows.
+        type: boolean
+        default: false
+      lfs:
+        description: Download Git LFS files.
+        type: boolean
+        default: false
+      gradle-args:
+        description: Extra arguments for each Gradle call, separated by spaces.
+        type: string
+        default: ''
+
+defaults:
+  run:
+    shell: bash
+
+jobs:
+  android:
+    name: Android
+    if: inputs.android
+    runs-on: ubuntu-latest
+    timeout-minutes: 60
+    permissions:
+      contents: read
+      pull-requests: write
+    steps:
+      - name: Set up the build
+        uses: embarrasdf/devops/actions/gradle-setup@main
+        with:
+          lfs: ${{ inputs.lfs }}
+
+      - name: Describe the app
+        id: app
+        uses: embarrasdf/devops/actions/app-info@main
+        with:
+          app-dir: ${{ inputs.app-dir }}
+
+      - name: Build
+        env:
+          PREFIX: ${{ steps.app.outputs.gradle-prefix }}
+          GRADLE_ARGS: ${{ inputs.gradle-args }}
+        run: |
+          read -ra args <<< "${PREFIX}androidApp:assembleDebug $GRADLE_ARGS"
+          ./gradlew "${args[@]}"
+
+      - name: Upload the APKs
+        uses: actions/upload-artifact@v7
+        with:
+          name: ${{ steps.app.outputs.name }}-android
+          path: ${{ steps.app.outputs.dir }}/androidApp/build/outputs/apk/**/*.apk
+
+  ios:
+    name: iOS
+    if: inputs.ios
+    runs-on: macos-26
+    timeout-minutes: 60
+    permissions:
+      contents: read
+      pull-requests: write
+    steps:
+      - name: Set up the build
+        uses: embarrasdf/devops/actions/gradle-setup@main
+        with:
+          lfs: ${{ inputs.lfs }}
+
+      - name: Describe the app
+        id: app
+        uses: embarrasdf/devops/actions/app-info@main
+        with:
+          app-dir: ${{ inputs.app-dir }}
+
+      - name: Build for the simulator
+        env:
+          DIR: ${{ steps.app.outputs.dir }}
+        run: |
+          projects=("$DIR"/iosApp/*.xcodeproj)
+          if [ "${#projects[@]}" -ne 1 ] || [ ! -d "${projects[0]}" ]; then
+            echo "::error::Expected one Xcode project in $DIR/iosApp"
+            exit 1
+          fi
+          project="${projects[0]}"
+          scheme="$(basename "$project" .xcodeproj)"
+          xcodebuild -workspace "$project/project.xcworkspace" -scheme "$scheme" \
+            -configuration Debug -sdk iphonesimulator -arch arm64
+
+  web:
+    name: Web
+    if: inputs.web
+    runs-on: ubuntu-latest
+    timeout-minutes: 60
+    permissions:
+      contents: read
+      pull-requests: write
+    steps:
+      - name: Set up the build
+        uses: embarrasdf/devops/actions/gradle-setup@main
+        with:
+          lfs: ${{ inputs.lfs }}
+
+      - name: Describe the app
+        id: app
+        uses: embarrasdf/devops/actions/app-info@main
+        with:
+          app-dir: ${{ inputs.app-dir }}
+
+      - name: Build
+        env:
+          PREFIX: ${{ steps.app.outputs.gradle-prefix }}
+          GRADLE_ARGS: ${{ inputs.gradle-args }}
+        run: |
+          read -ra args <<< "${PREFIX}webApp:wasmJsBrowserDistribution $GRADLE_ARGS"
+          ./gradlew "${args[@]}"
+
+      - name: Upload the site
+        uses: actions/upload-artifact@v7
+        with:
+          name: ${{ steps.app.outputs.name }}-web
+          path: ${{ steps.app.outputs.dir }}/webApp/build/dist/wasmJs/productionExecutable/
+
+  desktop:
+    name: Desktop (${{ matrix.name }})
+    if: inputs.desktop
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - name: macOS
+            os: macos-26
+          - name: Windows
+            os: windows-latest
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 60
+    permissions:
+      contents: read
+      pull-requests: write
+    steps:
+      - name: Set up the build
+        uses: embarrasdf/devops/actions/gradle-setup@main
+        with:
+          lfs: ${{ inputs.lfs }}
+
+      - name: Describe the app
+        id: app
+        uses: embarrasdf/devops/actions/app-info@main
+        with:
+          app-dir: ${{ inputs.app-dir }}
+
+      - name: Build
+        env:
+          PREFIX: ${{ steps.app.outputs.gradle-prefix }}
+          GRADLE_ARGS: ${{ inputs.gradle-args }}
+        run: |
+          read -ra args <<< "${PREFIX}desktopApp:createDistributable $GRADLE_ARGS"
+          ./gradlew "${args[@]}"
+
+      - name: Upload the app
+        uses: actions/upload-artifact@v7
+        with:
+          name: ${{ steps.app.outputs.name }}-desktop-${{ matrix.name }}
+          path: ${{ steps.app.outputs.dir }}/desktopApp/build/compose/binaries/main/app/

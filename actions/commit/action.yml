@@ -1,0 +1,44 @@
+name: Commit changes
+description: >
+  Commits changes to the given paths and pushes them to the branch that was
+  checked out, rebasing onto anything pushed in the meantime, so jobs that
+  commit to the same branch can run at the same time. Does nothing when the
+  paths are unchanged.
+
+inputs:
+  paths:
+    description: Git pathspecs to commit, separated by spaces or lines.
+    required: true
+  message:
+    description: Commit message.
+    required: true
+
+runs:
+  using: composite
+  steps:
+    - name: Commit and push
+      shell: bash
+      env:
+        PATHS: ${{ inputs.paths }}
+        MESSAGE: ${{ inputs.message }}
+        BRANCH: ${{ github.head_ref || github.ref_name }}
+      run: |
+        set -f
+        read -ra pathspecs <<< "$(printf '%s' "$PATHS" | tr '\n' ' ')"
+        set +f
+        git add -A -- "${pathspecs[@]}"
+        if git diff --cached --quiet; then
+          echo "Nothing to commit."
+          exit 0
+        fi
+        git -c user.name='github-actions[bot]' \
+          -c user.email='41898282+github-actions[bot]@users.noreply.github.com' \
+          commit -m "$MESSAGE"
+        for attempt in 1 2 3 4 5; do
+          git push origin "HEAD:refs/heads/$BRANCH" && exit 0
+          echo "Push $attempt failed; rebasing onto $BRANCH."
+          git -c user.name='github-actions[bot]' \
+            -c user.email='41898282+github-actions[bot]@users.noreply.github.com' \
+            pull --rebase origin "$BRANCH" || { git rebase --abort; exit 1; }
+        done
+        exit 1

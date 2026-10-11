@@ -1,0 +1,50 @@
+name: Describe an app
+description: >
+  Works out names and paths for an app folder. An app folder holds the app's
+  modules (androidApp, iosApp, webApp, desktopApp, benchmark, ...) and its
+  Gradle project path matches its folder: "." is the root project, "app" is
+  :app, "apps/foo" is :apps:foo.
+
+inputs:
+  app-dir:
+    description: The app folder, relative to the repo root.
+    default: '.'
+
+outputs:
+  dir:
+    description: The app folder, without a trailing slash.
+    value: ${{ steps.info.outputs.dir }}
+  gradle-prefix:
+    description: Gradle path prefix for the app's modules, such as ":" or ":apps:foo:".
+    value: ${{ steps.info.outputs.gradle-prefix }}
+  name:
+    description: >
+      A name for the app's artifacts: the folder's name, or the repo's for the
+      root folder.
+    value: ${{ steps.info.outputs.name }}
+
+runs:
+  using: composite
+  steps:
+    - name: Describe the app
+      id: info
+      shell: bash
+      env:
+        APP_DIR: ${{ inputs.app-dir }}
+        REPO: ${{ github.event.repository.name }}
+      run: |
+        dir="${APP_DIR%/}"
+        dir="${dir#./}"
+        if [ -z "$dir" ] || [ "$dir" = . ]; then
+          dir=.
+          prefix=:
+          name="$REPO"
+        else
+          prefix=":${dir//\//:}:"
+          name="${dir##*/}"
+        fi
+        {
+          echo "dir=$dir"
+          echo "gradle-prefix=$prefix"
+          echo "name=$name"
+        } >> "$GITHUB_OUTPUT"

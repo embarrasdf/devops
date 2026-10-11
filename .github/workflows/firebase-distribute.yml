@@ -1,0 +1,192 @@
+# Reusable workflow: builds an app and sends it to testers with Firebase App Distribution.
+#
+# Call it once per app from a repo like this (the caller decides when it runs):
+#
+#   name: Deploy to Firebase App Distribution
+#   on:
+#     pull_request:
+#     push:
+#       branches: [main]
+#     workflow_dispatch:
+#   concurrency:
+#     group: ${{ github.workflow }}-${{ github.ref }}
+#     cancel-in-progress: true
+#   jobs:
+#     app:
+#       name: Palette
+#       uses: embarrasdf/devops/.github/workflows/firebase-distribute.yml@main
+#       permissions: { contents: read, pull-requests: write }
+#       with:
+#         app-dir: app
+#         android: true
+#         ios: true
+#       secrets:
+#         FIREBASE_SERVICE_ACCOUNT_KEY: ${{ secrets.FIREBASE_SERVICE_ACCOUNT_KEY }}
+#         FIREBASE_ANDROID_APP_ID: ${{ secrets.FIREBASE_ANDROID_APP_ID }}
+#         ...
+#
+# Each platform runs `bundle exec fastlane distribute_to_firebase` in <app-dir>/androidApp or
+# <app-dir>/iosApp, with firebase_app_id and release_notes_file (the branch, commit and commits).
+# The Android build reads its signing key from KEYSTORE_FILE_PATH, ANDROID_KEYSTORE_PASSWORD,
+# ANDROID_KEY_ALIAS and ANDROID_KEY_PASSWORD. Pull requests from forks are skipped: they get no
+# secrets.
+
+name: Firebase App Distribution
+
+on:
+  workflow_call:
+    inputs:
+      app-dir:
+        description: The app folder (see actions/app-info).
+        type: string
+        default: '.'
+      android:
+        description: Distribute the Android app.
+        type: boolean
+        default: false
+      ios:
+        description: Distribute the iOS app.
+        type: boolean
+        default: false
+      ruby-version:
+        description: Ruby version for fastlane.
+        type: string
+        default: '3.4.11'
+      lfs:
+        description: Download Git LFS files.
+        type: boolean
+        default: false
+    secrets:
+      FIREBASE_SERVICE_ACCOUNT_KEY:
+        required: true
+      FIREBASE_ANDROID_APP_ID:
+        required: false
+      ANDROID_SIGNING_KEY:
+        description: The release keystore, base64-encoded.
+        required: false
+      ANDROID_KEYSTORE_PASSWORD:
+        required: false
+      ANDROID_KEY_ALIAS:
+        required: false
+      ANDROID_KEY_PASSWORD:
+        required: false
+      FIREBASE_IOS_APP_ID:
+        required: false
+      MATCH_PASSWORD:
+        required: false
+      MATCH_GIT_BASIC_AUTHORIZATION:
+        required: false
+
+jobs:
+  android:
+    name: Distribute Android
+    if: >-
+      inputs.android &&
+      (github.event_name != 'pull_request' || github.event.pull_request.head.repo.full_name == github.repository)
+    runs-on: ubuntu-latest
+    timeout-minutes: 60
+    permissions:
+      contents: read
+      pull-requests: write
+    steps:
+      - name: Set up the build
+        uses: embarrasdf/devops/actions/gradle-setup@main
+        with:
+          lfs: ${{ inputs.lfs }}
+
+      - name: Describe the app
+        id: app
+        uses: embarrasdf/devops/actions/app-info@main
+        with:
+          app-dir: ${{ inputs.app-dir }}
+
+      - name: Set up Ruby
+        uses: ruby/setup-ruby@v1
+        with:
+          ruby-version: ${{ inputs.ruby-version }}
+          bundler-cache: true
+          working-directory: ${{ steps.app.outputs.dir }}/androidApp
+
+      - name: Write the credentials
+        env:
+          SERVICE_ACCOUNT_KEY: ${{ secrets.FIREBASE_SERVICE_ACCOUNT_KEY }}
+          SIGNING_KEY: ${{ secrets.ANDROID_SIGNING_KEY }}
+        run: |
+          printf '%s' "$SERVICE_ACCOUNT_KEY" > "$RUNNER_TEMP/service-account.json"
+          printf '%s' "$SIGNING_KEY" | base64 --decode > "$RUNNER_TEMP/release.jks"
+
+      - name: Write the release notes
+        uses: embarrasdf/devops/actions/release-notes@main
+        with:
+          path: ${{ runner.temp }}/release-notes.txt
+
+      - name: Build and distribute
+        working-directory: ${{ steps.app.outputs.dir }}/androidApp
+        env:
+          GOOGLE_APPLICATION_CREDENTIALS: ${{ runner.temp }}/service-account.json
+          KEYSTORE_FILE_PATH: ${{ runner.temp }}/release.jks
+          ANDROID_KEYSTORE_PASSWORD: ${{ secrets.ANDROID_KEYSTORE_PASSWORD }}
+          ANDROID_KEY_ALIAS: ${{ secrets.ANDROID_KEY_ALIAS }}
+          ANDROID_KEY_PASSWORD: ${{ secrets.ANDROID_KEY_PASSWORD }}
+          FIREBASE_APP_ID: ${{ secrets.FIREBASE_ANDROID_APP_ID }}
+          NOTES: ${{ runner.temp }}/release-notes.txt
+        run: |
+          # A pasted secret can carry stray whitespace, which would cut the fastlane call short.
+          app_id="$(printf '%s' "$FIREBASE_APP_ID" | tr -d '[:space:]')"
+          bundle exec fastlane distribute_to_firebase \
+            firebase_app_id:"$app_id" \
+            release_notes_file:"$NOTES"
+
+  ios:
+    name: Distribute iOS
+    if: >-
+      inputs.ios &&
+      (github.event_name != 'pull_request' || github.event.pull_request.head.repo.full_name == github.repository)
+    runs-on: macos-26
+    timeout-minutes: 60
+    permissions:
+      contents: read
+      pull-requests: write
+    steps:
+      - name: Set up the build
+        uses: embarrasdf/devops/actions/gradle-setup@main
+        with:
+          lfs: ${{ inputs.lfs }}
+
+      - name: Describe the app
+        id: app
+        uses: embarrasdf/devops/actions/app-info@main
+        with:
+          app-dir: ${{ inputs.app-dir }}
+
+      - name: Set up Ruby
+        uses: ruby/setup-ruby@v1
+        with:
+          ruby-version: ${{ inputs.ruby-version }}
+          bundler-cache: true
+          working-directory: ${{ steps.app.outputs.dir }}/iosApp
+
+      - name: Write the credentials
+        env:
+          SERVICE_ACCOUNT_KEY: ${{ secrets.FIREBASE_SERVICE_ACCOUNT_KEY }}
+        run: printf '%s' "$SERVICE_ACCOUNT_KEY" > "$RUNNER_TEMP/service-account.json"
+
+      - name: Write the release notes
+        uses: embarrasdf/devops/actions/release-notes@main
+        with:
+          path: ${{ runner.temp }}/release-notes.txt
+
+      - name: Build and distribute
+        working-directory: ${{ steps.app.outputs.dir }}/iosApp
+        env:
+          GOOGLE_APPLICATION_CREDENTIALS: ${{ runner.temp }}/service-account.json
+          MATCH_PASSWORD: ${{ secrets.MATCH_PASSWORD }}
+          MATCH_GIT_BASIC_AUTHORIZATION: ${{ secrets.MATCH_GIT_BASIC_AUTHORIZATION }}
+          FIREBASE_APP_ID: ${{ secrets.FIREBASE_IOS_APP_ID }}
+          NOTES: ${{ runner.temp }}/release-notes.txt
+        run: |
+          # A pasted secret can carry stray whitespace, which would cut the fastlane call short.
+          app_id="$(printf '%s' "$FIREBASE_APP_ID" | tr -d '[:space:]')"
+          bundle exec fastlane distribute_to_firebase \
+            firebase_app_id:"$app_id" \
+            release_notes_file:"$NOTES"
