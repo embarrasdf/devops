@@ -1,0 +1,20 @@
+// Shared Renovate config for the embarrasdf repos. A repo extends it with:
+//
+//   {
+//     $schema: 'https://docs.renovatebot.com/renovate-schema.json',
+//     extends: ['github>embarrasdf/devops//renovate/default.json5'],
+//   }
+{
+  $schema: 'https://docs.renovatebot.com/renovate-schema.json',
+  extends: [
+    'config:recommended',
+  ],
+  baseBranches: [
+    'main',
+  ],
+  gitIgnoredAuthors: [
+    'renovate[bot]@users.noreply.github.com',
+    'github-actions[bot]@users.noreply.github.com',
+    '41898282+github-actions[bot]@users.noreply.github.com',
+  ],
+}

@@ -1,0 +1,95 @@
+# Reusable workflow: releases an embarrasdf Gradle repo.
+#
+# Call it from a repo like this, after the workflow that must pass first:
+#
+#   name: Publish
+#   on:
+#     workflow_run:
+#       workflows: [CI]
+#       types: [completed]
+#       branches: [main]
+#     workflow_dispatch:
+#   jobs:
+#     publish:
+#       uses: embarrasdf/devops/.github/workflows/publish.yml@main
+#       permissions: { contents: write }
+#       secrets:
+#         MAVEN_CENTRAL_USERNAME: ${{ secrets.MAVEN_CENTRAL_USERNAME }}
+#         MAVEN_CENTRAL_PASSWORD: ${{ secrets.MAVEN_CENTRAL_PASSWORD }}
+#         GPG_KEY: ${{ secrets.GPG_KEY }}
+#         GPG_KEY_ID: ${{ secrets.GPG_KEY_ID }}
+#         GPG_KEY_PASSWORD: ${{ secrets.GPG_KEY_PASSWORD }}
+#
+# It runs only after a successful run of that workflow on main (not for a pull request), or by hand. embarrasdfRelease from
+# gradle-plugins publishes to Maven Central, updates a templated README and creates the GitHub
+# release. Secrets are passed one by one because `secrets: inherit` only works within an owner.
+
+name: Publish
+
+on:
+  workflow_call:
+    inputs:
+      tasks:
+        description: Gradle tasks that release the repo.
+        type: string
+        default: embarrasdfRelease
+      runs-on:
+        description: >
+          Runner. Publishing iOS libraries needs macOS; a repo that only creates a GitHub release
+          can use ubuntu-latest.
+        type: string
+        default: macos-26
+      commit-pattern:
+        description: Files the release may change, committed afterwards. '' commits nothing.
+        type: string
+        default: README.md
+    secrets:
+      MAVEN_CENTRAL_USERNAME:
+        required: false
+      MAVEN_CENTRAL_PASSWORD:
+        required: false
+      GPG_KEY:
+        required: false
+      GPG_KEY_ID:
+        required: false
+      GPG_KEY_PASSWORD:
+        required: false
+
+jobs:
+  publish:
+    name: Publish
+    if: >-
+      github.event_name != 'workflow_run' ||
+      (github.event.workflow_run.conclusion == 'success' && github.event.workflow_run.event != 'pull_request')
+    runs-on: ${{ inputs.runs-on }}
+    timeout-minutes: 60
+    permissions:
+      contents: write
+    # Never cancel a release halfway through.
+    concurrency:
+      group: publish-${{ github.repository }}
+      cancel-in-progress: false
+    steps:
+      - name: Set up the build
+        uses: embarrasdf/devops/actions/gradle-setup@main
+
+      - name: Release
+        env:
+          TASKS: ${{ inputs.tasks }}
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          ORG_GRADLE_PROJECT_mavenCentralUsername: ${{ secrets.MAVEN_CENTRAL_USERNAME }}
+          ORG_GRADLE_PROJECT_mavenCentralPassword: ${{ secrets.MAVEN_CENTRAL_PASSWORD }}
+          ORG_GRADLE_PROJECT_signingInMemoryKey: ${{ secrets.GPG_KEY }}
+          ORG_GRADLE_PROJECT_signingInMemoryKeyId: ${{ secrets.GPG_KEY_ID }}
+          ORG_GRADLE_PROJECT_signingInMemoryKeyPassword: ${{ secrets.GPG_KEY_PASSWORD }}
+        # The shipkit release tasks don't support the configuration cache.
+        run: |
+          read -ra args <<< "$TASKS --no-configuration-cache"
+          ./gradlew "${args[@]}"
+
+      - name: Commit changed files
+        if: inputs.commit-pattern != ''
+        uses: stefanzweifel/git-auto-commit-action@v7
+        with:
+          commit_message: "Update files for the release"
+          file_pattern: ${{ inputs.commit-pattern }}

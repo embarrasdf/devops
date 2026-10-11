@@ -1,0 +1,84 @@
+name: Set up a Gradle build
+description: >
+  Checks out the repo and sets up the JDK, Gradle and the CI gradle.properties
+  that every embarrasdf Gradle job uses.
+
+inputs:
+  ref:
+    description: Ref to check out. Defaults to the event's ref.
+    default: ''
+  fetch-depth:
+    description: >
+      Commits to fetch; 0 fetches all history. The release plugin derives the
+      version from tags, so it defaults to 0.
+    default: '0'
+  lfs:
+    description: Whether to download Git LFS files.
+    default: 'false'
+  java-version:
+    description: >
+      JDK major version. Defaults to the one in toolchain/versions.env, which
+      cloud sessions use too.
+    default: ''
+  gradle-properties:
+    description: Lines to add to the CI gradle.properties.
+    default: ''
+  add-job-summary-as-pr-comment:
+    description: setup-gradle's add-job-summary-as-pr-comment.
+    default: 'on-failure'
+
+outputs:
+  java-version:
+    description: The JDK major version that was set up.
+    value: ${{ steps.java.outputs.version }}
+
+runs:
+  using: composite
+  steps:
+    - name: Check out the repo
+      uses: actions/checkout@v7
+      with:
+        ref: ${{ inputs.ref }}
+        fetch-depth: ${{ inputs.fetch-depth }}
+        lfs: ${{ inputs.lfs }}
+
+    - name: Write the CI gradle.properties
+      shell: bash
+      env:
+        EXTRA: ${{ inputs.gradle-properties }}
+      run: |
+        mkdir -p ~/.gradle
+        cp "${GITHUB_ACTION_PATH//\\//}/gradle.properties" ~/.gradle/gradle.properties
+        if [ -n "$EXTRA" ]; then
+          printf '\n%s\n' "$EXTRA" >> ~/.gradle/gradle.properties
+        fi
+
+    - name: Pick the JDK version
+      id: java
+      shell: bash
+      env:
+        VERSION: ${{ inputs.java-version }}
+      run: |
+        if [ -z "$VERSION" ]; then
+          versions="${GITHUB_ACTION_PATH//\\//}/../../toolchain/versions.env"
+          VERSION="$(sed -n 's/^JDK_RELEASE=jdk-\([0-9]*\).*/\1/p' "$versions")"
+          if [ -z "$VERSION" ]; then
+            echo "::error::No JDK_RELEASE in $versions"
+            exit 1
+          fi
+        fi
+        echo "version=$VERSION" >> "$GITHUB_OUTPUT"
+
+    - name: Set up the JDK
+      uses: actions/setup-java@v6
+      with:
+        distribution: temurin
+        java-version: ${{ steps.java.outputs.version }}
+
+    - name: Set up Gradle
+      uses: gradle/actions/setup-gradle@v6
+      with:
+        add-job-summary-as-pr-comment: ${{ inputs.add-job-summary-as-pr-comment }}
+        build-scan-publish: true
+        build-scan-terms-of-use-url: 'https://gradle.com/terms-of-service'
+        build-scan-terms-of-use-agree: 'yes'
