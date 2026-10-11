@@ -1,0 +1,112 @@
+name: Static analysis
+description: >
+  Runs embarrasdfStaticAnalysis and reports the findings: in the job summary, as code scanning
+  alerts on public repos (SARIF), and in a comment on same-repo pull requests. Fails if there are
+  any findings. Expects the repo checked out, plus a JDK and Gradle.
+
+inputs:
+  gradle-args:
+    description: Extra arguments for the Gradle call, separated by spaces.
+    default: ''
+  type-resolution:
+    description: Whether detekt uses type resolution, which compiles the JVM and Android targets.
+    default: 'true'
+
+runs:
+  using: composite
+  steps:
+    - name: Run static analysis
+      id: analysis
+      shell: bash
+      env:
+        GRADLE_ARGS: ${{ inputs.gradle-args }}
+        TYPE_RESOLUTION: ${{ inputs.type-resolution }}
+      run: |
+        set -o pipefail
+        # --continue analyzes every module before failing.
+        if ./gradlew embarrasdfStaticAnalysis --continue \
+            "-Pembarrasdf.staticAnalysis.typeResolution=$TYPE_RESOLUTION" $GRADLE_ARGS; then
+          echo "passed=true" >> "$GITHUB_OUTPUT"
+        else
+          echo "passed=false" >> "$GITHUB_OUTPUT"
+        fi
+
+    - name: Summarize findings
+      id: summary
+      if: always()
+      shell: bash
+      env:
+        PASSED: ${{ steps.analysis.outputs.passed }}
+        BLOB_URL: ${{ github.server_url }}/${{ github.repository }}/blob/${{ github.event.pull_request.head.sha || github.sha }}
+        RUN_URL: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
+      run: |
+        sarif="$RUNNER_TEMP/static-analysis.sarif"
+        findings="$RUNNER_TEMP/static-analysis-findings.md"
+        body="$RUNNER_TEMP/static-analysis-comment.md"
+        count=$(python3 -I "$GITHUB_ACTION_PATH/summarize.py" "$PWD" "$sarif" "$findings" "$BLOB_URL")
+        [ -f "$sarif" ] && echo "sarif=$sarif" >> "$GITHUB_OUTPUT"
+
+        if [ "$PASSED" = true ]; then
+          echo "### Static analysis passed" >> "$GITHUB_STEP_SUMMARY"
+          exit 0
+        fi
+        {
+          if [ "$count" -gt 0 ]; then
+            echo "### Static analysis found $count issue$([ "$count" = 1 ] || echo s)"
+            echo
+            cat "$findings"
+            echo "Run \`./gradlew embarrasdfStaticAnalysis\` locally to see the same list. [Workflow run]($RUN_URL)"
+          else
+            echo "### Static analysis failed"
+            echo
+            echo "The build failed before detekt reported any findings. See the [workflow run]($RUN_URL)."
+          fi
+        } > "$body"
+        cat "$body" >> "$GITHUB_STEP_SUMMARY"
+        echo "body-file=$body" >> "$GITHUB_OUTPUT"
+
+    - name: Decide where to report
+      id: mode
+      if: always()
+      shell: bash
+      env:
+        EVENT: ${{ github.event_name }}
+        HEAD_REPO: ${{ github.event.pull_request.head.repo.full_name }}
+        REPO: ${{ github.repository }}
+        PRIVATE: ${{ github.event.repository.private }}
+      run: |
+        # A fork's pull request gets a read-only token: no comments or code scanning uploads.
+        same_repo=true
+        if [ "$EVENT" = pull_request ] && [ "$HEAD_REPO" != "$REPO" ]; then same_repo=false; fi
+        comment=false
+        if [ "$EVENT" = pull_request ] && [ "$same_repo" = true ]; then comment=true; fi
+        # Code scanning needs GitHub Advanced Security on private repos.
+        sarif=false
+        if [ "$PRIVATE" != true ] && [ "$same_repo" = true ]; then sarif=true; fi
+        echo "comment=$comment" >> "$GITHUB_OUTPUT"
+        echo "sarif=$sarif" >> "$GITHUB_OUTPUT"
+
+    - name: Upload SARIF to code scanning
+      if: always() && steps.mode.outputs.sarif == 'true' && steps.summary.outputs.sarif != ''
+      uses: github/codeql-action/upload-sarif@v3
+      with:
+        sarif_file: ${{ steps.summary.outputs.sarif }}
+        category: detekt
+
+    - name: Comment on the pull request
+      if: always() && steps.mode.outputs.comment == 'true'
+      uses: embarrasdf/devops/actions/pr-comment@main
+      with:
+        marker: '<!-- embarrasdf-static-analysis -->'
+        body-file: ${{ steps.summary.outputs.body-file }}
+        resolved-body: |
+          ### Static analysis issues resolved
+
+          Static analysis passes on this pull request.
+
+    - name: Fail if there are findings
+      if: steps.analysis.outputs.passed != 'true'
+      shell: bash
+      run: |
+        echo "::error::Static analysis found issues. Run ./gradlew embarrasdfStaticAnalysis locally to see them."
+        exit 1

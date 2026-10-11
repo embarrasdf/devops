@@ -1,0 +1,80 @@
+# Reusable workflow: runs static analysis (detekt) on the calling repo.
+#
+# Call it from a repo like this (the caller decides when it runs):
+#
+#   on:
+#     pull_request:
+#     push:
+#       branches: [main]
+#
+#   jobs:
+#     static-analysis:
+#       uses: embarrasdf/devops/.github/workflows/static-analysis.yml@main
+#       permissions: { contents: read, pull-requests: write, security-events: write }
+#
+# It runs embarrasdfStaticAnalysis and fails on any finding. Findings go to the job summary, to
+# code scanning on public repos (SARIF), and to a comment on same-repo pull requests, which later
+# runs update. The repo needs the com.embarrasdf.gradle.plugin.static.analysis plugin from
+# gradle-plugins.
+
+name: Static analysis
+
+on:
+  workflow_call:
+    inputs:
+      java-version:
+        description: JDK version to build with.
+        type: string
+        default: '17'
+      gradle-args:
+        description: Extra arguments for the Gradle call, separated by spaces.
+        type: string
+        default: ''
+      type-resolution:
+        description: >
+          Whether detekt uses type resolution, which compiles the JVM and Android targets. Without
+          it, detekt skips the rules that need types, which is most of them.
+        type: boolean
+        default: true
+
+jobs:
+  static-analysis:
+    name: Static analysis
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    permissions:
+      contents: read
+      pull-requests: write
+      security-events: write
+
+    steps:
+      - name: Check out the repo
+        uses: actions/checkout@v7
+        with:
+          # The release plugin derives the version from tags.
+          fetch-depth: 0
+
+      - name: Copy CI gradle.properties
+        run: |
+          if [ -f .github/ci-gradle.properties ]; then
+            mkdir -p ~/.gradle
+            cp .github/ci-gradle.properties ~/.gradle/gradle.properties
+          fi
+
+      - name: Set up JDK
+        uses: actions/setup-java@v6
+        with:
+          distribution: 'zulu'
+          java-version: ${{ inputs.java-version }}
+
+      - name: Set up Gradle
+        uses: gradle/actions/setup-gradle@v6
+        with:
+          # The static analysis action posts its own comment listing the findings.
+          add-job-summary-as-pr-comment: 'never'
+
+      - name: Run static analysis
+        uses: embarrasdf/devops/actions/static-analysis@main
+        with:
+          gradle-args: ${{ inputs.gradle-args }}
+          type-resolution: ${{ inputs.type-resolution }}

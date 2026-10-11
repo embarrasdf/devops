@@ -77,52 +77,38 @@ runs:
           echo '````'
         } >> "$GITHUB_STEP_SUMMARY"
 
+    - name: Write the pull request comment
+      id: comment
+      if: steps.mode.outputs.fix == 'true' && steps.check.outputs.passed != 'true'
+      shell: bash
+      env:
+        ISSUES_FILE: ${{ steps.check.outputs.issues-file }}
+        RUN_URL: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
+      run: |
+        body="$RUNNER_TEMP/format-comment.md"
+        echo "body-file=$body" >> "$GITHUB_OUTPUT"
+        {
+          echo '### Formatting issues need a manual fix'
+          echo
+          echo 'The fixes that could be made automatically were committed to this branch. These issues remain and need to be fixed by hand:'
+          echo
+          echo '````text'
+          cat "$ISSUES_FILE"
+          echo '````'
+          echo
+          echo "Run \`./gradlew embarrasdfFormatCheck\` locally to see the same list. [Workflow run]($RUN_URL)"
+        } > "$body"
+
     - name: Comment on the pull request
       if: steps.mode.outputs.fix == 'true'
-      uses: actions/github-script@v8
-      env:
-        PASSED: ${{ steps.check.outputs.passed }}
-        ISSUES_FILE: ${{ steps.check.outputs.issues-file }}
+      uses: embarrasdf/devops/actions/pr-comment@main
       with:
-        script: |
-          const fs = require('fs');
-          const marker = '<!-- embarrasdf-format -->';
-          const { owner, repo } = context.repo;
-          const issue_number = context.issue.number;
+        marker: '<!-- embarrasdf-format -->'
+        body-file: ${{ steps.comment.outputs.body-file }}
+        resolved-body: |
+          ### Formatting issues resolved
 
-          const comments = await github.paginate(github.rest.issues.listComments, { owner, repo, issue_number });
-          const existing = comments.find(c => c.user.type === 'Bot' && c.body.includes(marker));
-
-          let body;
-          if (process.env.PASSED === 'true') {
-            // Nothing to say unless an earlier run reported issues.
-            if (!existing) return;
-            body = `${marker}\n### Formatting issues resolved\n\nEverything on this pull request is formatted.`;
-          } else {
-            let issues = fs.readFileSync(process.env.ISSUES_FILE, 'utf8').trim();
-            const limit = 60000;
-            if (issues.length > limit) issues = issues.slice(0, limit) + '\n… (cut off; see the job summary for the rest)';
-            const runUrl = `${context.serverUrl}/${owner}/${repo}/actions/runs/${context.runId}`;
-            body = [
-              marker,
-              '### Formatting issues need a manual fix',
-              '',
-              'The fixes that could be made automatically were committed to this branch. ' +
-                'These issues remain and need to be fixed by hand:',
-              '',
-              '````text',
-              issues,
-              '````',
-              '',
-              `Run \`./gradlew embarrasdfFormatCheck\` locally to see the same list. [Workflow run](${runUrl})`,
-            ].join('\n');
-          }
-
-          if (existing) {
-            await github.rest.issues.updateComment({ owner, repo, comment_id: existing.id, body });
-          } else {
-            await github.rest.issues.createComment({ owner, repo, issue_number, body });
-          }
+          Everything on this pull request is formatted.
 
     - name: Fail if issues remain
       if: steps.check.outputs.passed != 'true'
