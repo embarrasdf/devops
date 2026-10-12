@@ -64,6 +64,13 @@ the header of that workflow shows the call. It clones the repos side by side
 with [`actions/clone-repos`](actions/clone-repos) and builds with
 [`actions/workspace-image`](actions/workspace-image).
 
+Each line of a list is a repo, optionally followed by the Gradle tasks that
+fill its caches. Without tasks, the build runs `embarrasdfWarmCaches` from
+[gradle-plugins](https://github.com/embarrasdf/gradle-plugins#ci-tasks), which
+builds the repo's apps and compiles everything its CI tests, without running
+the tests. A repo on a gradle-plugins release without that task needs its tasks
+listed.
+
 Each build starts from the previous image's caches, so only what changed
 downloads or compiles, and drops the caches of Gradle versions no repo's
 wrapper uses any more. Dependencies no repo uses linger, though; when the

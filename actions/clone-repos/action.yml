@@ -7,8 +7,9 @@ inputs:
   repos-file:
     description: >
       The list, or several separated by spaces. Each line is
-      "<owner>/<repo> <gradle task> [<gradle task> ...]"; blank lines and lines
-      starting with # are skipped. A repo in more than one list is cloned once.
+      "<owner>/<repo> [<gradle task> ...]", where no tasks means
+      embarrasdfWarmCaches; blank lines and lines starting with # are skipped.
+      A repo in more than one list is cloned once.
     required: true
   app-id:
     description: >

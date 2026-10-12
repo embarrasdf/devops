@@ -5,8 +5,9 @@
 #
 #   clone.sh <destination> <list file> [<list file> ...]
 #
-# Each line of a list is "<owner>/<repo> <gradle task> [<gradle task> ...]". A
-# repo in more than one list is cloned once, with the tasks from its first line.
+# Each line of a list is "<owner>/<repo> [<gradle task> ...]"; with no tasks, the
+# image build runs embarrasdfWarmCaches (see warm.sh). A repo in more than one
+# list is cloned once, with the tasks from its first line.
 #
 # Credentials, from the environment, for repos that aren't public:
 #   APP_ID and APP_PRIVATE_KEY  a GitHub App installed on the owners of the
