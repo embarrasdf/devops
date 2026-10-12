@@ -15,8 +15,9 @@
 # scope, exported as GHCR_TOKEN by the environment's setup script itself.
 # Neither the environment's variables nor its network secrets reach the setup
 # script: variables are given to the session only, and the session proxy that
-# adds network secrets starts after setup. The login is removed on exit, so
-# the token isn't kept in the snapshot.
+# adds network secrets starts after setup. The login is kept in a docker
+# config on tmpfs, not ~/.docker, so the token never reaches the snapshot even
+# if the environment kills this script before its exit trap runs.
 
 set -uo pipefail
 
@@ -26,17 +27,24 @@ GHCR_TOKEN="${GHCR_TOKEN:?export GHCR_TOKEN in the setup script; see the header 
 # build.
 TOOLCHAIN="${TOOLCHAIN:-ghcr.io/embarrasdf/kmp-toolchain:latest}"
 
-log() { echo "==> $*"; }
+log() { echo "==> $(date -u +%H:%M:%S) $*"; }
+log "Setup started $(date -u +%Y-%m-%dT%H:%M:%SZ)"
 
 # Docker is installed but its daemon isn't running yet.
 dockerd >/var/log/dockerd.log 2>&1 &
 for _ in $(seq 30); do docker info >/dev/null 2>&1 && break; sleep 1; done
 
-if ! echo "$GHCR_TOKEN" | docker login ghcr.io -u token --password-stdin; then
+# Earlier versions of this script logged in to ~/.docker and could leave the
+# token there when killed; drop that login if a snapshot still has it.
+docker logout ghcr.io >/dev/null 2>&1 || true
+
+DOCKER_CONFIG="$(mktemp -d /dev/shm/docker-config.XXXXXX)"
+export DOCKER_CONFIG
+trap 'rm -rf "$DOCKER_CONFIG"; log "Setup finished after ${SECONDS}s"' EXIT
+if ! printf '%s' "$GHCR_TOKEN" | docker login ghcr.io -u token --password-stdin; then
   log "error: docker login to ghcr.io failed; check GHCR_TOKEN"
   exit 1
 fi
-trap 'docker logout ghcr.io >/dev/null 2>&1 || true' EXIT
 
 # Wait on the pulls only: a bare `wait` also waits on dockerd, which never
 # exits, so the script would hang until the environment kills it.
