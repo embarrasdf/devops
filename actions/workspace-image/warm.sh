@@ -5,7 +5,9 @@
 #
 #   warm.sh <list file>
 #
-# Each line of the list is "<folder under /src> <gradle task> [<gradle task> ...]".
+# Each line of the list is "<folder under /src> [<gradle task> ...]". A line with
+# no tasks runs embarrasdfWarmCaches from gradle-plugins, which builds the apps
+# and compiles the main and test code that the repo's CI tests.
 # A repo whose build fails is reported and skipped, so one broken repo doesn't
 # hold back everyone else's caches; the image fails only if every repo fails.
 
@@ -21,6 +23,7 @@ failed=()
 versions=()
 while read -r dir tasks; do
   case "$dir" in ''|'#'*) continue ;; esac
+  tasks="${tasks:-embarrasdfWarmCaches}"
   echo "==> Warming ${dir}: ${tasks}"
   version="$(sed -n 's|^distributionUrl=.*/gradle-\(.*\)-[a-z]*\.zip$|\1|p' \
     "/src/$dir/gradle/wrapper/gradle-wrapper.properties" 2>/dev/null)"
