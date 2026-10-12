@@ -52,11 +52,16 @@ fi
 # Fetch Paparazzi golden images from LFS on every clone.
 git lfs install --system --skip-repo || true
 
-# Gradle settings for every session.
+# Gradle settings for every session. org.gradle.java.home runs Gradle on the JDK
+# the workspace image built with, whatever JAVA_HOME a shell has: the JDK Gradle
+# runs on is part of the JVM and Android compile cache keys, so another one
+# misses every cached compile. A repo's gradle/gradle-daemon-jvm.properties
+# still takes precedence.
 gp=~/.gradle/gradle.properties
 touch "$gp"
-sed -i '/^org.gradle.java.installations.paths=/d; /^warningsAsErrors=/d' "$gp"
+sed -i '/^org.gradle.java.home=/d; /^org.gradle.java.installations.paths=/d; /^warningsAsErrors=/d' "$gp"
 cat >> "$gp" <<'EOF'
+org.gradle.java.home=/opt/jdk
 org.gradle.java.installations.paths=/opt/jdk
 warningsAsErrors=false
 EOF
