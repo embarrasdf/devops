@@ -64,6 +64,17 @@ the header of that workflow shows the call. It clones the repos side by side
 with [`actions/clone-repos`](actions/clone-repos) and builds with
 [`actions/workspace-image`](actions/workspace-image).
 
+Each build starts from the previous image's caches, so only what changed
+downloads or compiles, and drops the caches of Gradle versions no repo's
+wrapper uses any more. Dependencies no repo uses linger, though; when the
+image has grown, run a build with `fresh: true`, which starts from empty
+caches and compiles every repo from scratch. The caller passes it through,
+for example from a `workflow_dispatch` input.
+
+Cloud sessions also record how setup went: see
+`/var/log/cloud-setup.status` and `/var/log/cloud-setup.log` (described in the
+header of `cloud/setup.sh`).
+
 The repo is public, so any repo can use its workflows and actions.
 
 ## Cloud sessions (Claude Code on the web)
