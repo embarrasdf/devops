@@ -12,6 +12,11 @@ inputs:
   toolchain:
     description: Toolchain image to build on.
     default: ghcr.io/embarrasdf/kmp-toolchain:latest
+  fresh:
+    description: >
+      Start from empty caches instead of the previous image's. Drops
+      dependencies no repo uses any more, but compiles every repo from scratch.
+    default: 'false'
 
 outputs:
   image:
@@ -39,11 +44,15 @@ runs:
       env:
         IMAGE: ${{ inputs.image }}
         TOOLCHAIN: ${{ inputs.toolchain }}
+        FRESH: ${{ inputs.fresh }}
       run: |
         image="$IMAGE"
         echo "image=$image" >> "$GITHUB_OUTPUT"
         # Build on the previous image when there is one, so only changes download.
-        if docker manifest inspect "$image:latest" > /dev/null 2>&1; then
+        if [ "$FRESH" = true ]; then
+          echo "Fresh build: starting from empty caches"
+          echo "previous=$TOOLCHAIN" >> "$GITHUB_OUTPUT"
+        elif docker manifest inspect "$image:latest" > /dev/null 2>&1; then
           echo "previous=$image:latest" >> "$GITHUB_OUTPUT"
         else
           echo "previous=$TOOLCHAIN" >> "$GITHUB_OUTPUT"

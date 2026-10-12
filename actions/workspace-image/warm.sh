@@ -17,9 +17,14 @@ cp -p /opt/toolchain/session/central-mirror.init.gradle.kts "$GRADLE_USER_HOME/i
 
 built=()
 failed=()
+# Gradle versions the repos' wrappers use, to drop caches no repo needs.
+versions=()
 while read -r dir tasks; do
   case "$dir" in ''|'#'*) continue ;; esac
   echo "==> Warming ${dir}: ${tasks}"
+  version="$(sed -n 's|^distributionUrl=.*/gradle-\(.*\)-[a-z]*\.zip$|\1|p' \
+    "/src/$dir/gradle/wrapper/gradle-wrapper.properties" 2>/dev/null)"
+  if [ -n "$version" ]; then versions+=("$version"); fi
   # Kotlin compiles in Gradle's own JVM rather than a daemon that would otherwise
   # double the memory a build needs.
   # shellcheck disable=SC2086 # tasks are separate arguments
@@ -49,6 +54,30 @@ cd "$GRADLE_USER_HOME"
 rm -rf daemon native .tmp gradle.properties kotlin-profile \
   caches/[0-9]*/fileHashes caches/[0-9]*/file-changes
 find . -name '*.lock' -delete
+
+# Gradle unpacks the JDKs it provisions next to the archives it downloaded
+# them as, and only uses the unpacked copy.
+rm -f jdks/*.tar.gz jdks/*.zip
+
+# Each Gradle version has its own caches/<version> and wrapper distribution,
+# which this image would otherwise carry forward from the previous one long
+# after every repo has moved on, since the timestamps pinned below keep Gradle's
+# own cleanup from ever seeing them as unused. The shared caches, such as
+# modules-2 and build-cache-1, aren't per version and stay.
+if [ ${#versions[@]} -gt 0 ]; then
+  echo "==> Keeping Gradle caches for: $(printf '%s\n' "${versions[@]}" | sort -u | tr '\n' ' ')"
+  for path in caches/[0-9]*.*/ wrapper/dists/gradle-*/; do
+    [ -d "$path" ] || continue
+    version="$(basename "$path")"
+    version="${version#gradle-}"
+    version="${version%-bin}"
+    version="${version%-all}"
+    if ! printf '%s\n' "${versions[@]}" | grep -qxF "$version"; then
+      echo "==> Removing ${path} (Gradle ${version}, no repo uses it)"
+      rm -rf "$path"
+    fi
+  done
+fi
 
 # The build cache and Gradle's access journal (journal-1) change on every build.
 mkdir -p /out/deps /out/build
