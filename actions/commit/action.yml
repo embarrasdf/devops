@@ -12,6 +12,12 @@ inputs:
   message:
     description: Commit message.
     required: true
+  on-conflict:
+    description: >
+      What to do when the rebase conflicts: 'fail', or 'keep-ours' to keep this
+      job's version of the conflicting lines. 'keep-ours' suits generated files
+      that a later run should win, such as a release's README.
+    default: fail
 
 runs:
   using: composite
@@ -21,11 +27,18 @@ runs:
       env:
         PATHS: ${{ inputs.paths }}
         MESSAGE: ${{ inputs.message }}
+        ON_CONFLICT: ${{ inputs.on-conflict }}
         BRANCH: ${{ github.head_ref || github.ref_name }}
       run: |
         set -f
         read -ra pathspecs <<< "$(printf '%s' "$PATHS" | tr '\n' ' ')"
         set +f
+        case "$ON_CONFLICT" in
+          fail) strategy=() ;;
+          # In a rebase, "theirs" is the commit being replayed: this job's.
+          keep-ours) strategy=(-X theirs) ;;
+          *) echo "::error::on-conflict must be 'fail' or 'keep-ours', not '$ON_CONFLICT'"; exit 1 ;;
+        esac
         git add -A -- "${pathspecs[@]}"
         if git diff --cached --quiet; then
           echo "Nothing to commit."
@@ -39,6 +52,6 @@ runs:
           echo "Push $attempt failed; rebasing onto $BRANCH."
           git -c user.name='github-actions[bot]' \
             -c user.email='41898282+github-actions[bot]@users.noreply.github.com' \
-            pull --rebase origin "$BRANCH" || { git rebase --abort; exit 1; }
+            pull --rebase "${strategy[@]}" origin "$BRANCH" || { git rebase --abort; exit 1; }
         done
         exit 1

@@ -13,7 +13,7 @@
 #     publish:
 #       name: Publish
 #       uses: embarrasdf/devops/.github/workflows/publish.yml@main
-#       permissions: { contents: write }
+#       permissions: { contents: write, issues: read, pull-requests: read }
 #       secrets:
 #         MAVEN_CENTRAL_USERNAME: ${{ secrets.MAVEN_CENTRAL_USERNAME }}
 #         MAVEN_CENTRAL_PASSWORD: ${{ secrets.MAVEN_CENTRAL_PASSWORD }}
@@ -64,8 +64,10 @@ jobs:
       (github.event.workflow_run.conclusion == 'success' && github.event.workflow_run.event != 'pull_request')
     runs-on: ${{ inputs.runs-on }}
     timeout-minutes: 60
-    permissions:
-      contents: write
+    # No permissions of its own: the job gets the caller's, which need contents: write to tag and
+    # commit, and issues: read and pull-requests: read for the changelog to read the merged pull
+    # requests. Without those two, generateChangelog fails with "Problems fetching N tickets".
+    # Granting them here instead would stop every caller that doesn't yet from starting.
     # Never cancel a release halfway through.
     concurrency:
       group: publish-${{ github.repository }}
@@ -83,9 +85,10 @@ jobs:
           ORG_GRADLE_PROJECT_signingInMemoryKey: ${{ secrets.GPG_KEY }}
           ORG_GRADLE_PROJECT_signingInMemoryKeyId: ${{ secrets.GPG_KEY_ID }}
           ORG_GRADLE_PROJECT_signingInMemoryKeyPassword: ${{ secrets.GPG_KEY_PASSWORD }}
-        # The shipkit release tasks don't support the configuration cache.
+        # The shipkit release tasks don't support the configuration cache. A failed release
+        # is hard to retry, so log the cause in full.
         run: |
-          read -ra args <<< "$TASKS --no-configuration-cache"
+          read -ra args <<< "$TASKS --no-configuration-cache --stacktrace"
           ./gradlew "${args[@]}"
 
       - name: Commit changed files
@@ -94,3 +97,6 @@ jobs:
         with:
           paths: ${{ inputs.commit-pattern }}
           message: "Update files for the release"
+          # A release that starts before the previous one's commit lands would otherwise
+          # conflict on the version in the README; the newer release's files win.
+          on-conflict: keep-ours
