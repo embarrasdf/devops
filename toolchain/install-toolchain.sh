@@ -40,10 +40,9 @@ rm -rf "$ANDROID_HOME/cmdline-tools/latest"
 mv "$tmp/cmdline-tools" "$ANDROID_HOME/cmdline-tools/latest"
 rm -rf "$tmp"
 
-# Since cmdline-tools 23, sdkmanager is a deprecated wrapper around the Android
-# CLI's `android sdk`. Call that directly so metrics collection can be turned
-# off, which sdkmanager has no flag for. It accepts the SDK license itself, and
-# like any JVM tool takes the proxy from the JVM's settings, not HTTPS_PROXY.
+# The Android CLI, with metrics collection off. It accepts the SDK license
+# itself, and like any JVM tool takes the proxy from the JVM's settings, not
+# HTTPS_PROXY.
 android=("$ANDROID_HOME/cmdline-tools/latest/bin/android" --no-metrics --sdk="$ANDROID_HOME")
 export JAVA_HOME="$JDK_DIR"
 # One package per line; read returns 1 at the end of its input.
