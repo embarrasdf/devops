@@ -47,6 +47,12 @@ on:
         description: Claude Code plugin marketplace repos for cloud sessions, as owner/repo separated by spaces.
         type: string
         default: ''
+      runs-on:
+        description: >
+          Runner. A workspace image needs a lot of disk, so a larger runner with
+          more of it helps once the image outgrows ubuntu-latest.
+        type: string
+        default: ubuntu-latest
       toolchain:
         description: Toolchain image to build on.
         type: string
@@ -69,7 +75,7 @@ on:
 jobs:
   build:
     name: Build ${{ inputs.image }}
-    runs-on: ubuntu-latest
+    runs-on: ${{ inputs.runs-on }}
     timeout-minutes: 120
     permissions:
       contents: read
