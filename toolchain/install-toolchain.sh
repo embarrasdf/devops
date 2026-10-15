@@ -7,9 +7,9 @@
 #   /opt/android-sdk          Android SDK (ANDROID_HOME)
 #   /usr/local/bin/git-lfs
 #
-# The Android SDK comes from the archive zips directly rather than through
-# sdkmanager: sdkmanager is a JVM tool that doesn't pick up the cloud
-# environment's proxy, and fetching the zips keeps every download a plain curl.
+# The Android SDK is installed with the SDK's own installer, which writes the
+# package.xml each package needs. Without it AGP can't see a platform with a
+# minor version, such as android-37.0, and downloads it again in every build.
 
 set -euo pipefail
 
@@ -30,25 +30,29 @@ mkdir -p "$JDK_DIR"
 tar -xzf "$tmp/jdk.tar.gz" -C "$JDK_DIR" --strip-components=1
 rm -rf "$tmp"
 
-while read -r dest archive; do
-  [ -n "$dest" ] || continue
-  log "Android SDK ${dest} (${archive})"
-  tmp="$(mktemp -d)"
-  curl -fsSL -o "$tmp/pkg.zip" "https://dl.google.com/android/repository/${archive}"
-  unzip -q "$tmp/pkg.zip" -d "$tmp/x"
-  # Each zip holds a single top-level directory, named inconsistently
-  # (build-tools zips use "android-16", for example). Move it into place.
-  top="$(find "$tmp/x" -mindepth 1 -maxdepth 1 -type d | head -1)"
-  mkdir -p "$(dirname "$ANDROID_HOME/$dest")"
-  rm -rf "${ANDROID_HOME:?}/$dest"
-  mv "$top" "$ANDROID_HOME/$dest"
-  rm -rf "$tmp"
-done <<< "$ANDROID_SDK_PACKAGES"
+log "Android SDK command-line tools ${ANDROID_CMDLINE_TOOLS_BUILD}"
+tmp="$(mktemp -d)"
+curl -fsSL -o "$tmp/cmdline-tools.zip" \
+  "https://dl.google.com/android/repository/commandlinetools-linux-${ANDROID_CMDLINE_TOOLS_BUILD}_latest.zip"
+unzip -q "$tmp/cmdline-tools.zip" -d "$tmp"
+mkdir -p "$ANDROID_HOME/cmdline-tools"
+rm -rf "$ANDROID_HOME/cmdline-tools/latest"
+mv "$tmp/cmdline-tools" "$ANDROID_HOME/cmdline-tools/latest"
+rm -rf "$tmp"
 
-# Accept the SDK license (Google's published hashes) so AGP doesn't try to.
-mkdir -p "$ANDROID_HOME/licenses"
-printf '\n8933bad161af4178b1185d1a37fbf41ea5269c55\nd56f5187479451eabf01fb78af6dfcb131a6481e\n24333f8a63b6825ea9c5514f83c2829b004d1fee\n' \
-  > "$ANDROID_HOME/licenses/android-sdk-license"
+# Since cmdline-tools 23, sdkmanager is a deprecated wrapper around the Android
+# CLI's `android sdk`. Call that directly so metrics collection can be turned
+# off, which sdkmanager has no flag for. It accepts the SDK license itself, and
+# like any JVM tool takes the proxy from the JVM's settings, not HTTPS_PROXY.
+android=("$ANDROID_HOME/cmdline-tools/latest/bin/android" --no-metrics --sdk="$ANDROID_HOME")
+export JAVA_HOME="$JDK_DIR"
+# One package per line; read returns 1 at the end of its input.
+read -r -d '' -a packages <<< "$ANDROID_SDK_PACKAGES" || true
+log "Android SDK ${packages[*]}"
+"${android[@]}" sdk install "${packages[@]}" > /dev/null
+# The CLI unpacks a copy of itself (~250 MB) into ~/.android on first run, and
+# downloads one again if it's missing.
+rm -rf "$ANDROID_HOME/.temp" "$HOME/.android/cli" "$HOME/.android/bin"
 
 log "git-lfs ${GIT_LFS_VERSION}"
 tmp="$(mktemp -d)"
