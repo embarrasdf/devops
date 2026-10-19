@@ -136,8 +136,12 @@ done
 # Claude Code's user settings, which apply in every session whatever folder it
 # starts in. A session with several repos starts in the folder they're cloned
 # into, where no repo's own .claude/ is read.
-# - Its shell snapshot keeps only PATH from the shell profile, so pass the
-#   toolchain's other variables here.
+# - Its Bash tool doesn't read the shell profile: commands start from the PATH
+#   the session was launched with. Pass the toolchain's variables here, and add
+#   a SessionStart hook that sources apply.sh's profile script into
+#   CLAUDE_ENV_FILE, which Claude Code sources before each Bash command. That
+#   puts /opt/jdk/bin and platform-tools first on PATH; env can only replace
+#   PATH, which would pin the base image's PATH here.
 # - Register each marketplace and enable all its plugins. Claude Code loads
 #   plugins from a directory marketplace in place, so nothing is installed now,
 #   when the claude CLI may not be there yet.
@@ -150,6 +154,19 @@ env = settings.setdefault("env", {})
 env.update(ANDROID_HOME="/opt/android-sdk", ANDROID_SDK_ROOT="/opt/android-sdk", JAVA_HOME="/opt/jdk")
 if os.access("/opt/pw-browsers/chromium", os.X_OK):
     env["CHROME_BIN"] = "/opt/pw-browsers/chromium"
+profile = "/etc/profile.d/zz-android-build.sh"
+session_start = settings.setdefault("hooks", {}).setdefault("SessionStart", [])
+# Replace the hook a snapshot from an earlier run may already have.
+session_start[:] = [
+    group for group in session_start
+    if not any(profile in hook.get("command", "") for hook in group.get("hooks", []))
+]
+session_start.append({"hooks": [{
+    "type": "command",
+    # Resuming a session runs the hook again on the same file.
+    "command": f'[ -z "$CLAUDE_ENV_FILE" ] || grep -qxF ". {profile}" "$CLAUDE_ENV_FILE" 2>/dev/null'
+               f' || echo ". {profile}" >> "$CLAUDE_ENV_FILE"',
+}]})
 for repo in sorted(os.listdir(marketplaces)):
     root = os.path.join(marketplaces, repo)
     manifest = os.path.join(root, ".claude-plugin", "marketplace.json")

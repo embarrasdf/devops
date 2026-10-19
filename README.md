@@ -101,6 +101,10 @@ every session, including one with several repos, where no repo's own
 image is rebuilt. Claude Code specifics stay in `cloud/setup.sh`, out of the
 toolchain.
 
+Claude Code's Bash tool doesn't read the shell profile, so `cloud/setup.sh`
+also adds a SessionStart hook to those settings that puts the toolchain's
+`/opt/jdk/bin` and Android platform-tools first on its PATH.
+
 ## Files
 
 ```
