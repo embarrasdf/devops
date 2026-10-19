@@ -30,17 +30,28 @@ runs:
     # runner leaves free. Everything the build uses comes from the toolchain image,
     # so the runner's preinstalled SDKs, tool caches and Docker images can go. When
     # the disk fills, the runner dies without uploading the job's log.
+    #
+    # Deleting takes minutes, but the build only needs the space once its caches
+    # have grown, so it runs in the background, one directory per process, while
+    # the build starts. "Show disk usage" prints what it did.
     - name: Free disk space
       shell: bash
       run: |
         df -h /
-        sudo rm -rf /usr/local/lib/android /usr/share/dotnet /opt/ghc /usr/local/.ghcup \
-          /opt/hostedtoolcache /usr/local/share/boost /usr/share/swift \
-          /usr/local/share/powershell /usr/share/miniconda /usr/lib/jvm \
-          /usr/local/lib/node_modules /usr/local/share/chromium /opt/microsoft \
-          /opt/google /usr/share/az_* /usr/local/julia*
-        docker image prune --all --force
-        df -h /
+        log="$RUNNER_TEMP/free-disk-space.log"
+        nohup bash -c '
+          for dir in /usr/local/lib/android /usr/share/dotnet /opt/ghc /usr/local/.ghcup \
+            /opt/hostedtoolcache /usr/local/share/boost /usr/share/swift \
+            /usr/local/share/powershell /usr/share/miniconda /usr/lib/jvm \
+            /usr/local/lib/node_modules /usr/local/share/chromium /opt/microsoft \
+            /opt/google /usr/share/az_* /usr/local/julia*; do
+            sudo rm -rf "$dir" &
+          done
+          docker image prune --all --force
+          wait
+          echo "Finished freeing disk space after ${SECONDS}s"
+          df -h /
+        ' > "$log" 2>&1 &
 
     - name: Prepare the build
       id: names
@@ -79,3 +90,10 @@ runs:
         tags: |
           ${{ steps.names.outputs.image }}:latest
           ${{ steps.names.outputs.image }}:sha-${{ github.sha }}
+
+    - name: Show disk usage
+      if: always()
+      shell: bash
+      run: |
+        cat "$RUNNER_TEMP/free-disk-space.log" 2>/dev/null || true
+        df -h /
