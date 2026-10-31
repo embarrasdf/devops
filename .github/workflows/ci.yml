@@ -200,14 +200,18 @@ jobs:
     permissions:
       contents: read
       pull-requests: write
+    env:
+      # Secrets can't be read in a step's if, so this says whether the caller passed the key.
+      HAS_BOT_KEY: ${{ secrets.embarrassdf-bot-private-key != '' }}
     steps:
       - name: Get the embarrassdf-bot token
         id: bot
-        # Only for pull requests from this repo: fork pull requests get no secrets.
+        # Only for pull requests from this repo, whose callers pass the App's key: fork pull
+        # requests get no secrets.
         if: >
           github.event_name == 'pull_request' &&
           github.event.pull_request.head.repo.full_name == github.repository &&
-          vars.EMBARRASSDF_BOT_CLIENT_ID != ''
+          vars.EMBARRASSDF_BOT_CLIENT_ID != '' && env.HAS_BOT_KEY == 'true'
         uses: actions/create-github-app-token@v3
         with:
           client-id: ${{ vars.EMBARRASSDF_BOT_CLIENT_ID }}
