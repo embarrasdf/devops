@@ -9,7 +9,8 @@ each shows the call.
 
 | Workflow | Jobs |
 | --- | --- |
-| [`ci.yml`](.github/workflows/ci.yml) | Linux and iOS tests, Paparazzi screenshot tests, formatting |
+| [`ci.yml`](.github/workflows/ci.yml) | Linux and iOS tests, Paparazzi screenshot tests, formatting, static analysis, dependency locks |
+| [`dependency-review.yml`](.github/workflows/dependency-review.yml) | Claude's review of a pull request's dependency changes |
 | [`publish.yml`](.github/workflows/publish.yml) | Maven Central, GitHub release |
 | [`build-apps.yml`](.github/workflows/build-apps.yml) | Android, iOS, web and desktop builds of one app |
 | [`deploy-pages.yml`](.github/workflows/deploy-pages.yml) | Builds one app's web app and deploys it to GitHub Pages |
@@ -29,6 +30,48 @@ A repo with several apps keeps each in its own folder, such as `apps/foo`, with
 
 Repos extend the shared Renovate config in
 [`renovate/default.json5`](renovate/default.json5).
+
+### Dependency changes
+
+A repo that sets `embarrasdf.dependencyLocking=true` in its `gradle.properties`
+commits Gradle lockfiles (see
+[gradle-plugins](https://github.com/embarrasdf/gradle-plugins#dependency-locking)),
+so a bump that moves any version, direct or transitive, shows in its pull
+request. CI's Dependency Locks job
+([`actions/dependency-locks`](actions/dependency-locks)) runs
+`embarrasdfWriteLocks`. On a pull request from the repo, it commits lockfiles
+that changed, as the embarrassdf-bot GitHub App, whose push starts a new CI
+run. Renovate can't write them, since the hosted app doesn't run Gradle.
+Elsewhere, a change fails the job. When the locks are current, it comments with
+what moved against the base branch, including declared versions that now
+resolve higher, and uploads the `dependency-report` artifact.
+
+[`dependency-review.yml`](.github/workflows/dependency-review.yml) then has
+Claude review the changes with the `dependency-review` skill from
+embarrasdf/harness: release notes for every version in range, the code they
+affect, and a recommendation, in one comment. It runs after CI, when someone
+comments `/dependency-review`, or by hand. Only same-repo pull requests by
+Renovate or an authorized person are reviewed, and only when whoever started it
+is authorized: on an organization's repo, an active member with write access;
+on a personal repo, its owner. The header of the workflow has the details.
+
+Setup, once per owner:
+
+1. Create the embarrassdf-bot GitHub App with repository permissions Contents
+   (read and write), Pull requests (read and write) and Metadata (read), and
+   organization permission Members (read). Install it on the repos, including
+   embarrasdf/harness.
+2. Add its client ID as the `EMBARRASSDF_BOT_CLIENT_ID` variable, and its
+   private key and a token from `claude setup-token` as the
+   `EMBARRASSDF_BOT_PRIVATE_KEY` and `CLAUDE_CODE_OAUTH_TOKEN` secrets. Use organization secrets limited to the
+   repos that use them, or repository secrets on a personal account.
+3. In each repo, pass `embarrassdf-bot-private-key` to `ci.yml` and add the
+   caller from the header of `dependency-review.yml`.
+
+Any workflow in a repo that can read these secrets can use them, including one
+on a branch. Before anyone else gets write access to such a repo, move the
+secrets to an environment limited to the default branch, used only by
+`dependency-review.yml`'s jobs, and require code owner review of `.github/`.
 
 ## Build images
 
@@ -121,12 +164,14 @@ actions/release-notes/      tester-facing release notes
 actions/format/             fixes and checks formatting
 actions/screenshot-tests/   verifies Paparazzi screenshots and commits new ones
 actions/commit/             commits from CI jobs, rebasing onto concurrent pushes
+actions/dependency-locks/   keeps Gradle lockfiles current and reports what moved
+  report.py
 actions/workspace-image/    builds and pushes a workspace image
   Dockerfile, warm.sh
 actions/clone-repos/        clones a workspace list side by side
 .github/workflows/
   ci.yml, publish.yml, build-apps.yml, deploy-pages.yml, firebase-distribute.yml,
-  firebase-test-lab.yml, format.yml
+  firebase-test-lab.yml, format.yml, dependency-review.yml
                             reusable: CI for the repos
   build-toolchain.yml       builds kmp-toolchain
   workspace-image.yml       reusable: workspace repos call this to build their image

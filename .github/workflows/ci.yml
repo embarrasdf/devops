@@ -15,6 +15,8 @@
 #       name: CI
 #       uses: embarrasdf/devops/.github/workflows/ci.yml@main
 #       permissions: { contents: write, pull-requests: write, security-events: write }
+#       secrets:
+#         embarrassdf-bot-private-key: ${{ secrets.EMBARRASSDF_BOT_PRIVATE_KEY }}
 #
 # The default tasks come from gradle-plugins: embarrasdfTest runs everything a Linux runner can
 # (JVM, Android unit and browser tests), and embarrasdfTestApple runs the iOS simulator tests on
@@ -24,6 +26,14 @@
 # summary, to code scanning on public repos (SARIF, which needs security-events: write), and to a
 # comment on same-repo pull requests. To skip type resolution, set
 # embarrasdf.staticAnalysis.typeResolution=false in the repo's gradle.properties.
+#
+# Dependency locks run in a repo with embarrasdf.dependencyLocking=true in its gradle.properties
+# (see gradle-plugins). They rewrite the lockfiles; on a same-repo pull request, changes are
+# committed by the embarrassdf-bot GitHub App, so CI runs again on the new commit. Its client ID
+# is the EMBARRASSDF_BOT_CLIENT_ID variable, and its key is passed as the
+# embarrassdf-bot-private-key secret. Elsewhere, or without the App, a change fails the job.
+# When the locks are current, the job reports what moved against the base branch in a comment and
+# in the dependency-report artifact, which the dependency review reads.
 
 name: CI
 
@@ -56,10 +66,18 @@ on:
         description: Download Git LFS files.
         type: boolean
         default: false
+      dependency-locks:
+        description: Check the Gradle lockfiles, in a repo that locks dependencies.
+        type: boolean
+        default: true
       gradle-args:
         description: Extra arguments for each Gradle call, separated by spaces.
         type: string
         default: ''
+    secrets:
+      embarrassdf-bot-private-key:
+        description: Private key of the embarrassdf-bot GitHub App, which commits lockfiles.
+        required: false
 
 jobs:
   test:
@@ -172,4 +190,40 @@ jobs:
       - name: Run static analysis
         uses: embarrasdf/devops/actions/static-analysis@main
         with:
+          gradle-args: ${{ inputs.gradle-args }}
+
+  dependency-locks:
+    name: Dependency Locks
+    if: inputs.dependency-locks
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    permissions:
+      contents: read
+      pull-requests: write
+    steps:
+      - name: Get the embarrassdf-bot token
+        id: bot
+        # Only for pull requests from this repo: fork pull requests get no secrets.
+        if: >
+          github.event_name == 'pull_request' &&
+          github.event.pull_request.head.repo.full_name == github.repository &&
+          vars.EMBARRASSDF_BOT_CLIENT_ID != ''
+        uses: actions/create-github-app-token@v3
+        with:
+          client-id: ${{ vars.EMBARRASSDF_BOT_CLIENT_ID }}
+          private-key: ${{ secrets.embarrassdf-bot-private-key }}
+          permission-contents: write
+
+      - name: Set up the build
+        uses: embarrasdf/devops/actions/gradle-setup@main
+        with:
+          # The pull request branch rather than the merge commit, so lockfiles can be pushed to it.
+          ref: ${{ github.head_ref || github.ref }}
+          add-job-summary-as-pr-comment: 'never'
+
+      - name: Check the dependency locks
+        uses: embarrasdf/devops/actions/dependency-locks@main
+        with:
+          token: ${{ steps.bot.outputs.token }}
+          app-slug: ${{ steps.bot.outputs.app-slug }}
           gradle-args: ${{ inputs.gradle-args }}

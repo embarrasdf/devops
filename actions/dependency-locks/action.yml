@@ -1,0 +1,182 @@
+name: Dependency locks
+description: >
+  Keeps the Gradle lockfiles from gradle-plugins' embarrasdf.dependencyLocking current and reports
+  what moved. Runs embarrasdfWriteLocks. On a pull request from this repo with a token, lockfiles
+  that changed are committed to the pull request branch with that token, so CI runs again on the
+  new commit. Elsewhere (pushes, forks, no token) a change fails. When the lockfiles are current,
+  on a pull request, it writes a report of the changes against the base branch, uploads it as the
+  dependency-report artifact for the dependency review, and comments on same-repo pull requests.
+  Does nothing in a repo without embarrasdf.dependencyLocking=true. Expects the repo checked out
+  at the pull request branch with its history, plus a JDK and Gradle.
+
+inputs:
+  token:
+    description: >
+      Token that pushes lockfile commits, from a GitHub App, so the push starts a new CI run. A
+      push with the workflow's GITHUB_TOKEN wouldn't. Leave empty to only check.
+    default: ''
+  app-slug:
+    description: Slug of the App the token belongs to, which names the commit's author.
+    default: ''
+  gradle-args:
+    description: Extra arguments for each Gradle call, separated by spaces.
+    default: ''
+  insight-limit:
+    description: Most changed modules to explain with dependencyInsight.
+    default: '10'
+  commit-message:
+    description: Message for the commit that holds the lockfiles.
+    default: "🤖 Update dependency locks"
+
+outputs:
+  committed:
+    description: "'true' when lockfiles were committed, and a new CI run will follow."
+    value: ${{ steps.commit.outputs.committed }}
+
+runs:
+  using: composite
+  steps:
+    - name: Check that the repo locks dependencies
+      id: enabled
+      shell: bash
+      run: |
+        if grep -qsE '^\s*embarrasdf\.dependencyLocking\s*=\s*true\s*$' gradle.properties; then
+          echo "enabled=true" >> "$GITHUB_OUTPUT"
+        else
+          echo "Dependency locking is off (no embarrasdf.dependencyLocking=true in gradle.properties)."
+          echo "enabled=false" >> "$GITHUB_OUTPUT"
+        fi
+
+    - name: Write the lockfiles
+      id: write
+      if: steps.enabled.outputs.enabled == 'true'
+      shell: bash
+      env:
+        GRADLE_ARGS: ${{ inputs.gradle-args }}
+      run: |
+        read -ra args <<< "$GRADLE_ARGS"
+        ./gradlew embarrasdfWriteLocks "${args[@]}"
+        changed="$(git status --porcelain -- '*gradle.lockfile')"
+        if [ -n "$changed" ]; then
+          echo "changed=true" >> "$GITHUB_OUTPUT"
+          {
+            echo "### Lockfiles out of date"
+            echo
+            echo '```text'
+            echo "$changed"
+            echo '```'
+          } >> "$GITHUB_STEP_SUMMARY"
+        else
+          echo "changed=false" >> "$GITHUB_OUTPUT"
+        fi
+
+    - name: Decide whether to commit
+      id: mode
+      if: steps.write.outputs.changed == 'true'
+      shell: bash
+      env:
+        EVENT: ${{ github.event_name }}
+        HEAD_REPO: ${{ github.event.pull_request.head.repo.full_name }}
+        REPO: ${{ github.repository }}
+        HAS_TOKEN: ${{ inputs.token != '' && inputs.app-slug != '' }}
+      run: |
+        # Lockfiles can only be pushed to pull request branches in this repo, not to forks.
+        if [ "$EVENT" = pull_request ] && [ "$HEAD_REPO" = "$REPO" ] && [ "$HAS_TOKEN" = true ]; then
+          echo "commit=true" >> "$GITHUB_OUTPUT"
+        else
+          echo "::error::The lockfiles are out of date. Run ./gradlew embarrasdfWriteLocks and commit the changes."
+          exit 1
+        fi
+
+    - name: Commit the lockfiles
+      id: commit
+      if: steps.mode.outputs.commit == 'true'
+      shell: bash
+      env:
+        TOKEN: ${{ inputs.token }}
+        APP_SLUG: ${{ inputs.app-slug }}
+        MESSAGE: ${{ inputs.commit-message }}
+        BRANCH: ${{ github.head_ref }}
+        REPO: ${{ github.repository }}
+        API_URL: ${{ github.api_url }}
+        SERVER_URL: ${{ github.server_url }}
+      run: |
+        # Commit as the App's bot user, which owns the token that pushes.
+        id="$(curl -fsS -H "Authorization: Bearer $TOKEN" "$API_URL/users/${APP_SLUG}%5Bbot%5D" \
+          | python3 -I -c 'import json, sys; print(json.load(sys.stdin)["id"])')"
+        name="${APP_SLUG}[bot]"
+        email="${id}+${APP_SLUG}[bot]@users.noreply.github.com"
+
+        git add -A -- '*gradle.lockfile'
+        git -c user.name="$name" -c user.email="$email" commit -m "$MESSAGE"
+        # The checkout's credentials are the workflow's token; push with the App's instead, which
+        # starts a CI run on the new commit.
+        remote="${SERVER_URL/https:\/\//https://x-access-token:${TOKEN}@}/$REPO.git"
+        # An empty value clears the extra headers checkout set, so git sends only the App token.
+        git -c "http.$SERVER_URL/.extraheader=" push "$remote" "HEAD:refs/heads/$BRANCH"
+        echo "committed=true" >> "$GITHUB_OUTPUT"
+        echo "Committed the lockfiles as $name. CI runs again on the new commit." >> "$GITHUB_STEP_SUMMARY"
+
+    - name: Report the changes
+      id: report
+      if: >
+        steps.enabled.outputs.enabled == 'true' && steps.write.outputs.changed == 'false' &&
+        github.event_name == 'pull_request'
+      shell: bash
+      env:
+        BASE_SHA: ${{ github.event.pull_request.base.sha }}
+        HEAD_SHA: ${{ github.event.pull_request.head.sha }}
+        PR_NUMBER: ${{ github.event.pull_request.number }}
+        HEAD_REPO: ${{ github.event.pull_request.head.repo.full_name }}
+        REPO: ${{ github.repository }}
+        RUN_URL: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
+      run: |
+        out="$RUNNER_TEMP/dependency-report"
+        base="$(git merge-base "$BASE_SHA" HEAD)"
+        count="$(python3 -I "$GITHUB_ACTION_PATH/report.py" "$PWD" "$base" "$out")"
+        echo "count=$count" >> "$GITHUB_OUTPUT"
+        echo "dir=$out" >> "$GITHUB_OUTPUT"
+        printf '{"pr": %s, "head_sha": "%s", "base_sha": "%s"}\n' "$PR_NUMBER" "$HEAD_SHA" "$base" > "$out/pr.json"
+        cat "$out/report.md" >> "$GITHUB_STEP_SUMMARY"
+        if [ "$HEAD_REPO" = "$REPO" ]; then
+          echo "comment=true" >> "$GITHUB_OUTPUT"
+          { cat "$out/report.md"; echo; echo "[Workflow run]($RUN_URL) · the full report is in the \`dependency-report\` artifact."; } > "$out/comment.md"
+        fi
+
+    - name: Explain the changes
+      if: steps.report.outputs.count != '' && steps.report.outputs.count != '0'
+      shell: bash
+      env:
+        DIR: ${{ steps.report.outputs.dir }}
+        LIMIT: ${{ inputs.insight-limit }}
+        GRADLE_ARGS: ${{ inputs.gradle-args }}
+      run: |
+        # dependencyInsight shows which dependency asked for each new version. Best effort: a
+        # module that can't be explained is skipped.
+        mkdir -p "$DIR/insight"
+        read -ra args <<< "$GRADLE_ARGS"
+        head -n "$LIMIT" "$DIR/insight-targets.txt" | while read -r task module configuration; do
+          file="$DIR/insight/${module//:/_}.txt"
+          # Gradle would otherwise read the rest of the list from stdin.
+          ./gradlew "$task" --dependency "$module" --configuration "$configuration" -q "${args[@]}" \
+            < /dev/null > "$file" 2>&1 || echo "(dependencyInsight failed)" >> "$file"
+        done
+
+    - name: Upload the report
+      if: steps.report.outputs.dir != ''
+      uses: actions/upload-artifact@v7
+      with:
+        name: dependency-report
+        path: ${{ steps.report.outputs.dir }}
+        retention-days: 14
+
+    - name: Comment on the pull request
+      if: steps.report.outputs.comment == 'true'
+      uses: embarrasdf/devops/actions/pr-comment@main
+      with:
+        marker: '<!-- embarrasdf-dependency-locks -->'
+        body-file: ${{ steps.report.outputs.count != '0' && format('{0}/comment.md', steps.report.outputs.dir) || '' }}
+        resolved-body: |
+          ### No dependency changes
+
+          The lockfiles resolve to the same versions as the base branch.

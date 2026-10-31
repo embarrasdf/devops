@@ -16,5 +16,7 @@
     'renovate[bot]@users.noreply.github.com',
     'github-actions[bot]@users.noreply.github.com',
     '41898282+github-actions[bot]@users.noreply.github.com',
+    // Lockfile commits from CI's dependency-locks job, whatever the bot's user ID.
+    '/^\\d+\\+embarrassdf-bot\\[bot\\]@users\\.noreply\\.github\\.com$/',
   ],
 }
